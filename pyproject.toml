@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "reactions-generator"
+version = "0.1.0"
+description = "A library to generate reactions for icpc contests"
+authors = ["Azat Ismagilov <azatismagilov00@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+requests = "^2.32.3"
+python-ffmpeg = "^2.0.12"
+pillow = "^10.4.0"
+click = "^8.1.7"
+
+[tool.poetry.group.dev.dependencies]
+jupyter = "^1.1.1"
+ruff = "^0.6.3"
+pyright = "^1.1.378"
+
+[tool.poetry.scripts]
+render-video = "reactions_generator.cli:render_video"
+
+[tool.pyright]
+strict = ["reactions_generator", "tests"]
+reportMissingImports = false
+reportUnknownMemberType = false
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
