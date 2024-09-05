@@ -12,6 +12,10 @@ requests = "^2.32.3"
 python-ffmpeg = "^2.0.12"
 pillow = "^10.4.0"
 click = "^8.1.7"
+tqdm = "^4.66.5"
+typer = "^0.12.5"
+numpy = "^2.1.1"
+moviepy = "^1.0.3"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.1.1"
@@ -19,10 +23,12 @@ ruff = "^0.6.3"
 pyright = "^1.1.378"
 
 [tool.poetry.scripts]
-render-video = "reactions_generator.cli:render_video"
+main = "reactions_generator.cli:main"
+render-card = "reactions_generator.cli:run_render_card"
+render-reaction = "reactions_generator.cli:run_render_reaction"
 
 [tool.pyright]
-strict = ["reactions_generator", "tests"]
+typeCheckingMode = "strict"
 reportMissingImports = false
 reportUnknownMemberType = false
 
