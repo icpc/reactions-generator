@@ -12,10 +12,20 @@ from reactions_generator.utils import (
 )
 
 
+def measure(
+    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, multiline: bool
+) -> tuple[float, float]:
+    if multiline:
+        return draw.multiline_textbbox((0, 0), text, font=font)[2:]
+    else:
+        return draw.textbbox((0, 0), text, font=font)[2:]
+
+
 def draw_align_centre(
     draw: ImageDraw.ImageDraw, text: str, box: Box, font: ImageFont.FreeTypeFont
 ) -> None:
-    place = place_grid(center_anchor(box, dimensions=font.getbbox(text)[2:]))
+    dimensions = measure(draw, text, font, False)
+    place = place_grid(center_anchor(box, dimensions))
     draw.text(
         place[:2],
         text,
@@ -25,15 +35,37 @@ def draw_align_centre(
 
 
 def draw_align_left(
-    draw: ImageDraw.ImageDraw, text: str, box: Box, font: ImageFont.FreeTypeFont
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    box: Box,
+    font: ImageFont.FreeTypeFont,
+    multiline: bool = False,
 ) -> None:
-    place = place_grid(center_anchor(box, dimensions=font.getbbox(text)[2:]))
-    draw.text(
-        (box[0], place[1]),
-        text,
-        font=font,
-        fill=Colors.white,
-    )
+    dimensions = measure(draw, text, font, multiline)
+    place = place_grid(center_anchor(box, dimensions))
+    xy = (box[0], place[1])
+    if multiline:
+        draw.multiline_text(xy, text, font=font, fill=Colors.white)
+    else:
+        draw.text(xy, text, font=font, fill=Colors.white)
+
+
+def try_adding_endline(text: str) -> tuple[bool, str]:
+    if len(text) < 15:
+        return False, text
+
+    middle = len(text) // 2
+    best_position = -1
+
+    for i in range(len(text)):
+        if text[i] == " ":
+            if abs(i - middle) < abs(best_position - middle):
+                best_position = i
+
+    if best_position == -1:
+        return False, text
+
+    return True, text[:best_position] + "\n" + text[best_position + 1 :]
 
 
 @functools.cache
@@ -43,14 +75,21 @@ def auto_resize_text(
     font: ImageFont.FreeTypeFont,
     max_size: int,
 ) -> Image.Image:
+    multiline, text = try_adding_endline(text)
+
     width, height = map(math.floor, dimensions)
     max_horizontal_compression = 1.5
     measure_size = 10
-    _, _, measure_width, measure_height = font.font_variant(size=measure_size).getbbox(
-        text
+
+    measure_width, measure_height = measure(
+        ImageDraw.Draw(Image.new("1", (1, 1))),
+        text,
+        font.font_variant(size=measure_size),
+        multiline,
     )
     width_ratio = measure_width / measure_size
     height_ratio = measure_height / measure_size
+
     font_size = math.floor(
         min(
             width / width_ratio * max_horizontal_compression,
