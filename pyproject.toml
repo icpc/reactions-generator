@@ -9,7 +9,6 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.12"
 requests = "^2.32.3"
-python-ffmpeg = "^2.0.12"
 pillow = "^10.4.0"
 click = "^8.1.7"
 tqdm = "^4.66.5"
