@@ -4,6 +4,7 @@ import typer
 import requests
 import numpy as np
 from io import BytesIO
+from random import randint
 
 from tqdm import tqdm
 from PIL import Image, ImageColor
@@ -31,7 +32,12 @@ def process_video(
     if audio:
         clip = clip.set_audio(audio)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    clip.write_videofile(output_path, codec="libx264", fps=fps)
+    clip.write_videofile(
+        output_path,
+        codec="libx264",
+        fps=fps,
+        temp_audiofile=f"temp_audio_{randint(0, 100000000000)}.mp3",
+    )
 
 
 def load_image_or_color(source: str, dimensions: tuple[int, int]) -> Image.Image:
