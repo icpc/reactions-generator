@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from PIL import Image, ImageDraw, ImageFont
 
 from reactions_generator.colors import Colors
-from reactions_generator.interpolate import interpolate
+from reactions_generator.interpolate import interpolate, Easing
 from reactions_generator.utils import (
     Box,
     init_transparent_image,
@@ -78,7 +78,7 @@ def split_vertical(
 
 
 target_card_width = 1000
-target_card_height = 280
+target_card_height = 260
 target_card_padding_top = 48
 
 
@@ -130,7 +130,7 @@ class Card:
                 return Colors.red
         if frame < self.animation_start - 8 * blink_duration:
             return Colors.yellow
-        return cycle[(frame // blink_duration) % len(cycle)]
+        return cycle[((self.animation_start - frame) // blink_duration) % len(cycle)]
 
     def render_frame(
         self,
@@ -161,7 +161,7 @@ class Card:
                     self.animation_start + 6,
                 ],
                 [self.rank_before, 1, self.rank_before],
-            )
+            ),
         )
         place_image = render_place(rank)
         place_position = (
@@ -169,6 +169,7 @@ class Card:
                 frame,
                 [self.animation_start - 15, self.animation_start + 5],
                 [1, 0],
+                easing=Easing.EASE_IN_OUT_QUAD,
             )
             if self.success
             else interpolate(
@@ -179,6 +180,7 @@ class Card:
                     self.animation_start + 6,
                 ],
                 [1, 0.7, 1],
+                easing=Easing.EASE_IN_OUT_SIN,
             )
         )
         paste_with_alpha(
@@ -196,7 +198,7 @@ class Card:
         )
         (title_box, task_box), (subtitle_box, status_box) = [
             split_horizontal(box, width=552)
-            for box in split_vertical(content_box, height=170, padding=16, gap=16)
+            for box in split_vertical(content_box, height=150, padding=16, gap=16)
         ]
         logo = self.resized_logo
         paste_with_alpha(
@@ -208,7 +210,7 @@ class Card:
         paste_with_alpha(
             image,
             auto_resize_text(
-                self.title, dimensions(title_box), load_helvetica_bold(10), max_size=170
+                self.title, dimensions(title_box), load_helvetica_bold(10), max_size=150
             ),
             dest=(place_grid(title_box)[:2]),
         )
@@ -222,7 +224,7 @@ class Card:
             draw,
             self.task,
             task_box,
-            font=load_helvetica_bold(170),
+            font=load_helvetica_bold(150),
         )
         draw_align_centre(
             draw,

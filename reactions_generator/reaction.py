@@ -37,7 +37,7 @@ class Reaction:
     ) -> Image.Image:
         image = background.copy()
 
-        gap = 20
+        gap = 50
 
         card_position = center_anchor(
             (0, 0, image.width, image.height), dimensions=card.size
