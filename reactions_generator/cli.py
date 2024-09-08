@@ -27,7 +27,7 @@ def process_video(
     audio: AudioClip | None = None,
 ):
     """Assemble video from frames."""
-    raw_frames = [np.array(frame) for frame in tqdm(frames, desc="Converting frames")]
+    raw_frames = [np.asarray(frame) for frame in tqdm(frames, desc="Converting frames")]
     clip = ImageSequenceClip(raw_frames, fps=fps)
     if audio:
         clip = clip.set_audio(audio)
