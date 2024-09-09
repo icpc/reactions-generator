@@ -115,13 +115,6 @@ def run_render_card():
     typer.run(render_card)
 
 
-def audio_or_silence(clip: VideoFileClip) -> AudioClip:
-    if clip.audio is None:
-        duration: float = clip.duration  # type: ignore
-        return AudioClip(make_frame=lambda: 0, duration=duration, fps=44100)
-    return clip.audio
-
-
 @app.command()
 def render_reaction(
     title: str = "UNI",
@@ -195,8 +188,8 @@ def render_reaction(
         else submission_audio
     )
 
-    screen.close()
     process_video(frames, fps=fps, output_path=output_path, audio=audio)
+    screen.close()
     webcam.close()
 
 
