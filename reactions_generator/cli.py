@@ -226,6 +226,109 @@ def render_reaction(
     process.wait()
 
 
+@app.command()
+def render_horizontal_reaction(
+    title: str = "UNI",
+    subtitle: str = "Subtitle",
+    hashtag: str = "#hashtag",
+    task: str = "A",
+    time: float = 1000000,
+    outcome: str = "AC",
+    success: bool = True,
+    rank_before: int = 100,
+    rank_after: int = 1,
+    logo_source: str = "example/logo.png",
+    webcam_source: str = "example/reaction.mp4",
+    success_audio_path: str = "example/success.mp3",
+    fail_audio_path: str = "example/fail.mp3",
+    output_path: str = "out/output.mp4",
+    print_progress: bool = True,
+    vcodec: str = "libx264",
+    acodec: str = "libvorbis",
+):
+    """Render reaction as a video file."""
+    video_probe = typing.cast(
+        dict[str, str],
+        next(
+            (
+                stream
+                for stream in ffmpeg.probe(webcam_source)["streams"]
+                if stream["codec_type"] == "video"
+            ),
+        ),
+    )
+    # print(ffmpeg.probe(webcam_source))
+    fps = float(Fraction(video_probe["r_frame_rate"]))
+    last_frame = math.floor(float(video_probe["duration"]) * fps)
+
+    width = 1920
+    height = 1080
+
+    logo = load_image_or_color(logo_source, dimensions=(152, 152))
+    webcam_full = ffmpeg.input(webcam_source)  # type: ignore
+    webcam = webcam_full.video.filter(  # type: ignore
+        "scale", w=width, h="-1"
+    )
+    card = ffmpeg.input(  # type: ignore
+        "pipe:",
+        format="rawvideo",
+        pix_fmt="rgba",
+        s=f"{target_card_width}x{target_card_height}",
+    )
+
+    animation_start = max(0, round(last_frame - 30 * fps))
+
+    action_sound = (  # type: ignore
+        ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
+            "adelay", delays=animation_start / fps * 1000, all=1
+        )
+    )
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    video = (  # type: ignore
+        webcam.overlay(card, x=width - target_card_width, y=height - target_card_height)
+    )
+    audio = ffmpeg.filter(  # type: ignore
+        (webcam_full.audio, action_sound),  # type: ignore
+        "amix",
+        inputs=2,
+        duration="longest",
+    )
+    process = (  # type: ignore
+        ffmpeg.output(
+            audio,  # type: ignore
+            video,  # type: ignore
+            output_path,
+            vcodec=vcodec,
+            acodec=acodec,
+            r=fps,
+            pix_fmt="yuv420p",
+        )
+        .overwrite_output()
+        .run_async(pipe_stdin=True, quiet=not print_progress)
+    )
+
+    card_creator = Card(
+        title=title,
+        subtitle=subtitle,
+        hashtag=hashtag,
+        task=task,
+        time=time,
+        outcome=outcome,
+        success=success,
+        rank_before=rank_before,
+        rank_after=rank_after,
+        logo=logo,
+        animation_start=animation_start,
+        fps=fps,
+    )
+
+    for frame in range(last_frame + 1):
+        process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
+    process.stdin.close()
+    process.wait()
+
+
 def apply_cds_auth(url: str, cds_auth: str | None) -> str:
     if cds_auth is None:
         return url
@@ -247,6 +350,7 @@ def build_submission(
     print_progress: bool = True,
     vcodec: str = "libx264",
     acodec: str = "libvorbis",
+    vertical: bool = True,
 ):
     """Render reaction as a video file."""
     output_path = os.path.join(output_directory, f"{id}.mp4")
@@ -261,29 +365,60 @@ def build_submission(
             return
     response = requests.get(f"{url}/api/overlay/externalRun/{id}")
     data = response.json()
-    render_reaction(
-        title=data["team"]["displayName"],
-        subtitle=data["team"]["customFields"]["clicsTeamFullName"],
-        hashtag=data["team"]["hashTag"],
-        task=data["problem"]["letter"],
-        time=data["time"],
-        outcome=data["result"]["verdict"]["shortName"],
-        success=data["result"]["verdict"]["isAccepted"],
-        rank_before=data["team"]["rankBefore"],
-        rank_after=data["team"]["rankAfter"],
-        logo_source=apply_cds_auth(
-            data["team"]["organization"]["logo"]["url"], cds_auth
-        ),
-        webcam_source=apply_cds_auth(data["reactionVideos"][0]["url"], cds_auth),
-        screen_source=apply_cds_auth(data["reactionVideos"][1]["url"], cds_auth),
-        background_source=background_source,
-        success_audio_path=success_audio_path,
-        fail_audio_path=fail_audio_path,
-        output_path=output_path,
-        print_progress=print_progress,
-        vcodec=vcodec,
-        acodec=acodec,
-    )
+    title = data["team"]["displayName"]
+    subtitle = data["team"]["customFields"]["clicsTeamFullName"]
+    hashtag = data["team"]["hashTag"]
+    task = data["problem"]["letter"]
+    time = data["time"]
+    outcome = data["result"]["verdict"]["shortName"]
+    success = data["result"]["verdict"]["isAccepted"]
+    rank_before = data["team"]["rankBefore"]
+    rank_after = data["team"]["rankAfter"]
+    logo_source = apply_cds_auth(data["team"]["organization"]["logo"]["url"], cds_auth)
+    webcam_source = apply_cds_auth(data["reactionVideos"][0]["url"], cds_auth)
+    screen_source = apply_cds_auth(data["reactionVideos"][1]["url"], cds_auth)
+    if vertical:
+        render_reaction(
+            title=title,
+            subtitle=subtitle,
+            hashtag=hashtag,
+            task=task,
+            time=time,
+            outcome=outcome,
+            success=success,
+            rank_before=rank_before,
+            rank_after=rank_after,
+            logo_source=logo_source,
+            webcam_source=webcam_source,
+            screen_source=screen_source,
+            background_source=background_source,
+            success_audio_path=success_audio_path,
+            fail_audio_path=fail_audio_path,
+            output_path=output_path,
+            print_progress=print_progress,
+            vcodec=vcodec,
+            acodec=acodec,
+        )
+    else:
+        render_horizontal_reaction(
+            title=title,
+            subtitle=subtitle,
+            hashtag=hashtag,
+            task=task,
+            time=time,
+            outcome=outcome,
+            success=success,
+            rank_before=rank_before,
+            rank_after=rank_after,
+            logo_source=logo_source,
+            webcam_source=webcam_source,
+            success_audio_path=success_audio_path,
+            fail_audio_path=fail_audio_path,
+            output_path=output_path,
+            print_progress=print_progress,
+            vcodec=vcodec,
+            acodec=acodec,
+        )
 
 
 @app.command()
@@ -297,6 +432,7 @@ def continuous_build_submission(
     output_directory: str = "out",
     vcodec: str = "libx264",
     acodec: str = "libvorbis",
+    vertical: bool = True,
 ):
     """Render reaction as a video file."""
 
@@ -314,6 +450,7 @@ def continuous_build_submission(
                 print_progress=False,
                 vcodec=vcodec,
                 acodec=acodec,
+                vertical=vertical,
             )
         except Exception as e:
             typer.echo(f"Failed to render submission {id}: {e}")
