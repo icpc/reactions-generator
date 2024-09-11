@@ -15,7 +15,7 @@ from tqdm import tqdm
 from PIL import Image, ImageColor
 import ffmpeg  # type: ignore
 
-from reactions_generator.card import Card, target_card_width, target_card_height
+from reactions_generator.card import Card
 from reactions_generator.utils import (
     center_anchor,
     place_above,
@@ -148,7 +148,7 @@ def render_card(
                 "pipe:",
                 format="rawvideo",
                 pix_fmt="rgba",
-                s=f"{target_card_width}x{target_card_height}",
+                s=f"{Card.width}x{Card.height}",
                 r=fps,
             )
         ],
@@ -195,17 +195,17 @@ def render_reaction(
     logo = load_image_or_color(logo_source, dimensions=(152, 152))
     webcam_full = ffmpeg.input(webcam_source)  # type: ignore
     webcam = webcam_full.video.filter(  # type: ignore
-        "scale", w=target_card_width, h="-1"
+        "scale", w=Card.width, h="-1"
     )
     screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
-        "scale", w=target_card_width, h="-1"
+        "scale", w=Card.width, h="-1"
     )
     background = ffmpeg.input(background_source).filter("scale", w=width, h=height)  # type: ignore
     card = ffmpeg.input(  # type: ignore
         "pipe:",
         format="rawvideo",
         pix_fmt="rgba",
-        s=f"{target_card_width}x{target_card_height}",
+        s=f"{Card.width}x{Card.height}",
         r=fps,
     )
 
@@ -213,18 +213,16 @@ def render_reaction(
 
     gap = 50
 
-    card_position = center_anchor(
-        (0, 0, width, height),
-        dimensions=(target_card_width, target_card_height),
-    )
+    card_position = center_anchor((0, 0, width, height), dimensions=Card.size)
+    content_size = (Card.width, Card.width * 9 / 16)
     webcam_position = place_above(
         card_position,
-        dimensins=(target_card_width, target_card_width * 9 / 16),
+        dimensins=content_size,
         gap=gap,
     )
     screen_position = place_below(
         card_position,
-        dimensins=(target_card_width, target_card_width * 9 / 16),
+        dimensins=content_size,
         gap=gap,
     )
     action_sound = (  # type: ignore
@@ -309,7 +307,7 @@ def render_horizontal_reaction(
         "pipe:",
         format="rawvideo",
         pix_fmt="rgba",
-        s=f"{target_card_width}x{target_card_height}",
+        s=f"{Card.width}x{Card.height}",
         r=fps,
     )
 
@@ -322,7 +320,7 @@ def render_horizontal_reaction(
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     video = (  # type: ignore
-        webcam.overlay(card, x=width - target_card_width, y=height - target_card_height)
+        webcam.overlay(card, x=width - Card.width, y=height - Card.height)
     )
     audio = ffmpeg.filter(  # type: ignore
         (webcam_full.audio, action_sound),  # type: ignore

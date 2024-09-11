@@ -77,12 +77,6 @@ def split_vertical(
     return top_box, bottom_box
 
 
-target_card_width = 1000
-card_only_height = 260
-card_padding_top = 48
-target_card_height = card_only_height + card_padding_top
-
-
 @dataclass(frozen=True)
 class Card:
     title: str
@@ -98,10 +92,17 @@ class Card:
     animation_start: int
     fps: float
 
+    width = 1000
+    height = 306
+    top_padding = 48
+    actual_card_height = height - top_padding
+
+    size = (width, height)
+
     @functools.cached_property
     def resized_logo(self) -> Image.Image:
         logo = self.logo.copy()
-        logo.thumbnail((152, card_only_height))
+        logo.thumbnail((152, self.actual_card_height))
         return logo
 
     def time_to_string(self, frame: int) -> str:
@@ -137,10 +138,10 @@ class Card:
         self,
         frame: int,
     ) -> Image.Image:
-        image = init_transparent_image((target_card_width, target_card_height))
+        image = init_transparent_image(self.size)
         draw = ImageDraw.Draw(image)
         draw.rounded_rectangle(
-            [(0, card_padding_top), (image.width, image.height)],
+            [(0, self.top_padding), self.size],
             radius=48,
             fill=self.color_animation(frame),
         )
@@ -190,13 +191,13 @@ class Card:
 
         logo_xy = 152
         logo_box, content_box = split_horizontal(
-            (0, card_padding_top, image.width, image.height),
+            (0, self.top_padding, self.width, self.height),
             width=logo_xy,
             padding=40,
             gap=32,
         )
         (title_box, task_box), (subtitle_box, status_box) = [
-            split_horizontal(box, width=552)
+            split_horizontal(box, width=500)
             for box in split_vertical(content_box, height=150, padding=16, gap=16)
         ]
         logo = self.resized_logo
