@@ -1,11 +1,10 @@
 import os
 import math
-import typing
 import requests
 import atexit
 from io import BytesIO
 from fractions import Fraction
-from typing import Annotated, Any, NamedTuple
+from typing import Annotated, Any, NamedTuple, cast
 
 import typer
 from joblib import Parallel, delayed
@@ -53,7 +52,7 @@ class Metadata(NamedTuple):
 
 
 def get_metadata(video_path: str) -> Metadata:
-    probe = typing.cast(
+    probe = cast(
         dict[str, str],
         next(
             (
