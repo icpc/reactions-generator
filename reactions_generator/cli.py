@@ -5,7 +5,7 @@ import requests
 import atexit
 from io import BytesIO
 from fractions import Fraction
-from typing import Any, NamedTuple
+from typing import Annotated, Any, NamedTuple
 
 import typer
 from joblib import Parallel, delayed
@@ -15,6 +15,7 @@ from tqdm import tqdm
 from PIL import Image, ImageColor
 import ffmpeg  # type: ignore
 
+from reactions_generator.defaults import Defaults
 from reactions_generator.card import Card
 from reactions_generator.utils import (
     center_anchor,
@@ -106,21 +107,21 @@ def render(
 
 @app.command()
 def render_card(
-    title: str = "UNI",
-    subtitle: str = "Subtitle",
-    hashtag: str = "#hashtag",
-    task: str = "A",
-    time: float = 1000000,
-    outcome: str = "AC",
-    success: bool = True,
-    rank_before: int = 100,
-    rank_after: int = 1,
-    logo_source: str = "example/logo.png",
-    fps: float = 30,
-    duration_seconds: float = 60,
-    output_path: str = "out/output.mp4",
-    print_progress: bool = True,
-    vcodec: str = "libx264",
+    title: Annotated[str, typer.Argument(Defaults.title)],
+    subtitle: Annotated[str, typer.Argument(Defaults.subtitle)],
+    hashtag: Annotated[str, typer.Argument(Defaults.hashtag)],
+    task: Annotated[str, typer.Argument(Defaults.task)],
+    time: Annotated[float, typer.Argument(Defaults.time)],
+    outcome: Annotated[str, typer.Argument(Defaults.outcome)],
+    success: Annotated[bool, typer.Argument(Defaults.success)],
+    rank_before: Annotated[int, typer.Argument(Defaults.rank_before)],
+    rank_after: Annotated[int, typer.Argument(Defaults.rank_after)],
+    logo_source: Annotated[str, typer.Argument(Defaults.logo_source)],
+    fps: Annotated[float, typer.Argument(Defaults.fps)],
+    duration_seconds: Annotated[float, typer.Argument(Defaults.duration_seconds)],
+    output_path: Annotated[str, typer.Argument(Defaults.output_path)],
+    vcodec: Annotated[str, typer.Argument(Defaults.vcodec)],
+    print_progress: Annotated[bool, typer.Argument(True)],
 ):
     """Render card as a video file."""
     last_frame = math.floor(duration_seconds * fps)
@@ -164,25 +165,25 @@ def render_card(
 
 @app.command()
 def render_reaction(
-    title: str = "UNI",
-    subtitle: str = "Subtitle",
-    hashtag: str = "#hashtag",
-    task: str = "A",
-    time: float = 1000000,
-    outcome: str = "AC",
-    success: bool = True,
-    rank_before: int = 100,
-    rank_after: int = 1,
-    logo_source: str = "example/logo.png",
-    webcam_source: str = "example/reaction.mp4",
-    screen_source: str = "example/screen.mp4",
-    background_source: str = "example/background_vertical.png",
-    success_audio_path: str = "example/success.mp3",
-    fail_audio_path: str = "example/fail.mp3",
-    output_path: str = "out/output.mp4",
-    print_progress: bool = True,
-    vcodec: str = "libx264",
-    acodec: str = "libvorbis",
+    title: Annotated[str, typer.Argument(Defaults.title)],
+    subtitle: Annotated[str, typer.Argument(Defaults.subtitle)],
+    hashtag: Annotated[str, typer.Argument(Defaults.hashtag)],
+    task: Annotated[str, typer.Argument(Defaults.task)],
+    time: Annotated[float, typer.Argument(Defaults.time)],
+    outcome: Annotated[str, typer.Argument(Defaults.outcome)],
+    success: Annotated[bool, typer.Argument(Defaults.success)],
+    rank_before: Annotated[int, typer.Argument(Defaults.rank_before)],
+    rank_after: Annotated[int, typer.Argument(Defaults.rank_after)],
+    logo_source: Annotated[str, typer.Argument(Defaults.logo_source)],
+    webcam_source: Annotated[str, typer.Argument(Defaults.webcam_source)],
+    screen_source: Annotated[str, typer.Argument(Defaults.screen_source)],
+    background_source: Annotated[str, typer.Argument(Defaults.background_source)],
+    success_audio_path: Annotated[str, typer.Argument(Defaults.success_audio_path)],
+    fail_audio_path: Annotated[str, typer.Argument(Defaults.fail_audio_path)],
+    output_path: Annotated[str, typer.Argument(Defaults.output_path)],
+    vcodec: Annotated[str, typer.Argument(Defaults.vcodec)],
+    acodec: Annotated[str, typer.Argument(Defaults.acodec)],
+    print_progress: Annotated[bool, typer.Argument(True)],
 ):
     """Render reaction as a video file."""
     metadata = get_metadata(webcam_source)
@@ -272,23 +273,23 @@ def render_reaction(
 
 @app.command()
 def render_horizontal_reaction(
-    title: str = "UNI",
-    subtitle: str = "Subtitle",
-    hashtag: str = "#hashtag",
-    task: str = "A",
-    time: float = 1000000,
-    outcome: str = "AC",
-    success: bool = True,
-    rank_before: int = 100,
-    rank_after: int = 1,
-    logo_source: str = "example/logo.png",
-    webcam_source: str = "example/reaction.mp4",
-    success_audio_path: str = "example/success.mp3",
-    fail_audio_path: str = "example/fail.mp3",
-    output_path: str = "out/output.mp4",
-    print_progress: bool = True,
-    vcodec: str = "libx264",
-    acodec: str = "libvorbis",
+    title: Annotated[str, typer.Argument(Defaults.title)],
+    subtitle: Annotated[str, typer.Argument(Defaults.subtitle)],
+    hashtag: Annotated[str, typer.Argument(Defaults.hashtag)],
+    task: Annotated[str, typer.Argument(Defaults.task)],
+    time: Annotated[float, typer.Argument(Defaults.time)],
+    outcome: Annotated[str, typer.Argument(Defaults.outcome)],
+    success: Annotated[bool, typer.Argument(Defaults.success)],
+    rank_before: Annotated[int, typer.Argument(Defaults.rank_before)],
+    rank_after: Annotated[int, typer.Argument(Defaults.rank_after)],
+    logo_source: Annotated[str, typer.Argument(Defaults.logo_source)],
+    webcam_source: Annotated[str, typer.Argument(Defaults.webcam_source)],
+    success_audio_path: Annotated[str, typer.Argument(Defaults.success_audio_path)],
+    fail_audio_path: Annotated[str, typer.Argument(Defaults.fail_audio_path)],
+    output_path: Annotated[str, typer.Argument(Defaults.output_path)],
+    vcodec: Annotated[str, typer.Argument(Defaults.vcodec)],
+    acodec: Annotated[str, typer.Argument(Defaults.acodec)],
+    print_progress: Annotated[bool, typer.Argument(True)],
 ):
     """Render reaction as a video file."""
     metadata = get_metadata(webcam_source)
@@ -368,16 +369,16 @@ def apply_cds_auth(url: str, cds_auth: str | None) -> str:
 def build_submission(
     url: str,
     id: str,
-    cds_auth: str | None = None,
-    background_source: str = "example/background_vertical.png",
-    success_audio_path: str = "example/success.mp3",
-    fail_audio_path: str = "example/fail.mp3",
-    output_directory: str = "out",
-    overwrite: bool = False,
-    print_progress: bool = True,
-    vcodec: str = "libx264",
-    acodec: str = "libvorbis",
-    vertical: bool = True,
+    cds_auth: Annotated[str | None, typer.Argument(None)],
+    background_source: Annotated[str, typer.Argument(Defaults.background_source)],
+    success_audio_path: Annotated[str, typer.Argument(Defaults.success_audio_path)],
+    fail_audio_path: Annotated[str, typer.Argument(Defaults.fail_audio_path)],
+    output_directory: Annotated[str, typer.Argument(Defaults.output_path)],
+    vcodec: Annotated[str, typer.Argument(Defaults.vcodec)],
+    acodec: Annotated[str, typer.Argument(Defaults.acodec)],
+    vertical: Annotated[bool, typer.Argument(True)],
+    print_progress: Annotated[bool, typer.Argument(True)],
+    overwrite: Annotated[bool, typer.Argument(False)],
 ):
     """Render reaction as a video file."""
     output_path = os.path.join(output_directory, f"{id}.mp4")
@@ -451,15 +452,15 @@ def build_submission(
 @app.command()
 def continuous_build_submission(
     url: str,
-    cds_auth: str | None = None,
-    processes: int | None = os.cpu_count(),
-    background_source: str = "example/background_vertical.png",
-    success_audio_path: str = "example/success.mp3",
-    fail_audio_path: str = "example/fail.mp3",
-    output_directory: str = "out",
-    vcodec: str = "libx264",
-    acodec: str = "libvorbis",
-    vertical: bool = True,
+    cds_auth: Annotated[str | None, typer.Argument(None)],
+    processes: Annotated[int | None, typer.Argument(os.cpu_count())],
+    background_source: Annotated[str, typer.Argument(Defaults.background_source)],
+    success_audio_path: Annotated[str, typer.Argument(Defaults.success_audio_path)],
+    fail_audio_path: Annotated[str, typer.Argument(Defaults.fail_audio_path)],
+    output_directory: Annotated[str, typer.Argument(Defaults.output_path)],
+    vcodec: Annotated[str, typer.Argument(Defaults.vcodec)],
+    acodec: Annotated[str, typer.Argument(Defaults.acodec)],
+    vertical: Annotated[bool, typer.Argument(True)],
 ):
     """Render reaction as a video file."""
 
