@@ -2,8 +2,10 @@ import os
 import math
 import typing
 import requests
+import atexit
 from io import BytesIO
 from fractions import Fraction
+from typing import NamedTuple
 
 import typer
 from joblib import Parallel, delayed
@@ -42,6 +44,28 @@ def load_video(source: str, target_width: int):  # type: ignore
 
 def to_ffmpeg_frame(image: Image.Image):
     return np.asarray(image, np.uint8).tobytes()
+
+
+class Metadata(NamedTuple):
+    fps: Fraction
+    duration: float
+
+
+def get_metadata(video_path: str) -> Metadata:
+    probe = typing.cast(
+        dict[str, str],
+        next(
+            (
+                stream
+                for stream in ffmpeg.probe(video_path)["streams"]
+                if stream["codec_type"] == "video"
+            ),
+        ),
+    )
+    return Metadata(
+        fps=Fraction(probe["avg_frame_rate"]),
+        duration=float(probe["duration"]),
+    )
 
 
 @app.command()
@@ -122,19 +146,9 @@ def render_reaction(
     acodec: str = "libvorbis",
 ):
     """Render reaction as a video file."""
-    video_probe = typing.cast(
-        dict[str, str],
-        next(
-            (
-                stream
-                for stream in ffmpeg.probe(webcam_source)["streams"]
-                if stream["codec_type"] == "video"
-            ),
-        ),
-    )
-    # print(ffmpeg.probe(webcam_source))
-    fps = float(Fraction(video_probe["r_frame_rate"]))
-    last_frame = math.floor(float(video_probe["duration"]) * fps)
+    metadata = get_metadata(webcam_source)
+    fps = float(metadata.fps)
+    last_frame = math.floor(metadata.duration * fps)
 
     width = 1080
     height = 1920
@@ -220,6 +234,13 @@ def render_reaction(
         fps=fps,
     )
 
+    def clean_up():
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
+
+    atexit.register(clean_up)
+
     for frame in range(last_frame + 1):
         process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
     process.stdin.close()
@@ -247,19 +268,9 @@ def render_horizontal_reaction(
     acodec: str = "libvorbis",
 ):
     """Render reaction as a video file."""
-    video_probe = typing.cast(
-        dict[str, str],
-        next(
-            (
-                stream
-                for stream in ffmpeg.probe(webcam_source)["streams"]
-                if stream["codec_type"] == "video"
-            ),
-        ),
-    )
-    # print(ffmpeg.probe(webcam_source))
-    fps = float(Fraction(video_probe["r_frame_rate"]))
-    last_frame = math.floor(float(video_probe["duration"]) * fps)
+    metadata = get_metadata(webcam_source)
+    fps = float(metadata.fps)
+    last_frame = math.floor(metadata.duration * fps)
 
     width = 1920
     height = 1080
@@ -274,13 +285,13 @@ def render_horizontal_reaction(
         format="rawvideo",
         pix_fmt="rgba",
         s=f"{target_card_width}x{target_card_height}",
+        r=fps,
     )
 
     animation_start = max(0, round(last_frame - 30 * fps))
-
     action_sound = (  # type: ignore
         ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
-            "adelay", delays=animation_start / fps * 1000, all=1
+            "adelay", delays=(animation_start / fps * 1000), all=1
         )
     )
 
@@ -322,6 +333,13 @@ def render_horizontal_reaction(
         animation_start=animation_start,
         fps=fps,
     )
+
+    def clean_up():
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
+
+    atexit.register(clean_up)
 
     for frame in range(last_frame + 1):
         process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
