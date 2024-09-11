@@ -5,7 +5,7 @@ import requests
 import atexit
 from io import BytesIO
 from fractions import Fraction
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import typer
 from joblib import Parallel, delayed
@@ -68,6 +68,42 @@ def get_metadata(video_path: str) -> Metadata:
     )
 
 
+def render(
+    ffmpeg_input: list[Any],
+    card: Card,
+    last_frame: int,
+    output_path: str,
+    fps: float,
+    print_progress: bool,
+    vcodec: str,
+    acodec: str | None,
+):
+    process = (  # type: ignore
+        ffmpeg.output(
+            *ffmpeg_input,
+            output_path,
+            vcodec=vcodec,
+            acodec=acodec,
+            r=fps,
+            pix_fmt="yuv420p",
+        )
+        .overwrite_output()
+        .run_async(pipe_stdin=True, quiet=not print_progress)
+    )
+
+    def clean_up():
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
+
+    atexit.register(clean_up)
+
+    for frame in range(last_frame + 1):
+        process.stdin.write(to_ffmpeg_frame(card.render_frame(frame)))
+    process.stdin.close()
+    process.wait()
+
+
 @app.command()
 def render_card(
     title: str = "UNI",
@@ -91,18 +127,6 @@ def render_card(
     animation_start = max(0, round(last_frame - 30 * fps))
     logo = load_image_or_color(logo_source, dimensions=(152, 152))
 
-    process = (  # type: ignore
-        ffmpeg.input(
-            "pipe:",
-            format="rawvideo",
-            pix_fmt="rgba",
-            s=f"{target_card_width}x{target_card_height}",
-        )
-        .output(output_path, vcodec=vcodec, r=fps, pix_fmt="yuv420p")
-        .overwrite_output()
-        .run_async(pipe_stdin=True, quiet=not print_progress)
-    )
-
     card_creator = Card(
         title=title,
         subtitle=subtitle,
@@ -117,10 +141,25 @@ def render_card(
         animation_start=animation_start,
         fps=fps,
     )
-    for frame in range(last_frame + 1):
-        process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
-    process.stdin.close()
-    process.wait()
+
+    render(  # type: ignore
+        [
+            ffmpeg.input(
+                "pipe:",
+                format="rawvideo",
+                pix_fmt="rgba",
+                s=f"{target_card_width}x{target_card_height}",
+                r=fps,
+            )
+        ],
+        card=card_creator,
+        last_frame=last_frame,
+        output_path=output_path,
+        fps=fps,
+        print_progress=print_progress,
+        vcodec=vcodec,
+        acodec=None,
+    )
 
 
 @app.command()
@@ -167,6 +206,7 @@ def render_reaction(
         format="rawvideo",
         pix_fmt="rgba",
         s=f"{target_card_width}x{target_card_height}",
+        r=fps,
     )
 
     animation_start = max(0, round(last_frame - 30 * fps))
@@ -205,20 +245,6 @@ def render_reaction(
         inputs=2,
         duration="longest",
     )
-    process = (  # type: ignore
-        ffmpeg.output(
-            audio,  # type: ignore
-            video,  # type: ignore
-            output_path,
-            vcodec=vcodec,
-            acodec=acodec,
-            r=fps,
-            pix_fmt="yuv420p",
-        )
-        .overwrite_output()
-        .run_async(pipe_stdin=True, quiet=not print_progress)
-    )
-
     card_creator = Card(
         title=title,
         subtitle=subtitle,
@@ -234,17 +260,16 @@ def render_reaction(
         fps=fps,
     )
 
-    def clean_up():
-        if process.poll() is None:
-            process.terminate()
-            process.wait()
-
-    atexit.register(clean_up)
-
-    for frame in range(last_frame + 1):
-        process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
-    process.stdin.close()
-    process.wait()
+    render(
+        [audio, video],
+        card=card_creator,
+        last_frame=last_frame,
+        output_path=output_path,
+        fps=fps,
+        print_progress=print_progress,
+        vcodec=vcodec,
+        acodec=acodec,
+    )
 
 
 @app.command()
@@ -305,19 +330,6 @@ def render_horizontal_reaction(
         inputs=2,
         duration="longest",
     )
-    process = (  # type: ignore
-        ffmpeg.output(
-            audio,  # type: ignore
-            video,  # type: ignore
-            output_path,
-            vcodec=vcodec,
-            acodec=acodec,
-            r=fps,
-            pix_fmt="yuv420p",
-        )
-        .overwrite_output()
-        .run_async(pipe_stdin=True, quiet=not print_progress)
-    )
 
     card_creator = Card(
         title=title,
@@ -334,17 +346,16 @@ def render_horizontal_reaction(
         fps=fps,
     )
 
-    def clean_up():
-        if process.poll() is None:
-            process.terminate()
-            process.wait()
-
-    atexit.register(clean_up)
-
-    for frame in range(last_frame + 1):
-        process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
-    process.stdin.close()
-    process.wait()
+    render(
+        [audio, video],
+        card=card_creator,
+        last_frame=last_frame,
+        output_path=output_path,
+        fps=fps,
+        print_progress=print_progress,
+        vcodec=vcodec,
+        acodec=acodec,
+    )
 
 
 def apply_cds_auth(url: str, cds_auth: str | None) -> str:
