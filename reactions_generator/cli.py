@@ -1,50 +1,26 @@
 import os
 import math
-import typer
+import typing
 import requests
-import numpy as np
 from io import BytesIO
-from random import randint
+from fractions import Fraction
+
+import typer
 from joblib import Parallel, delayed
-
+import numpy as np
 from tqdm import tqdm
-from PIL import Image, ImageColor
-from moviepy.video.VideoClip import VideoClip, ImageClip  # type: ignore
-from moviepy.video.io.VideoFileClip import VideoFileClip  # type: ignore
-from moviepy.video.io.ImageSequenceClip import ImageSequenceClip  # type: ignore
-from moviepy.audio.AudioClip import AudioClip, CompositeAudioClip  # type: ignore
-from moviepy.audio.io.AudioFileClip import AudioFileClip  # type: ignore
 
-from reactions_generator.card import Card, target_card_width
-from reactions_generator.reaction import Reaction
+from PIL import Image, ImageColor
+import ffmpeg  # type: ignore
+
+from reactions_generator.card import Card, target_card_width, target_card_height
+from reactions_generator.utils import (
+    center_anchor,
+    place_above,
+    place_below,
+)
 
 app = typer.Typer(no_args_is_help=True)
-
-
-def process_video(
-    frames: list[Image.Image],
-    fps: float,
-    output_path: str,
-    print_progress: bool,
-    audio: AudioClip | None = None,
-):
-    """Assemble video from frames."""
-    raw_frames = [
-        np.asarray(frame)
-        for frame in tqdm(frames, desc="Converting frames", disable=not print_progress)
-    ]
-    clip = ImageSequenceClip(raw_frames, fps=fps)
-    if audio:
-        clip = clip.set_audio(audio)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    os.makedirs("tmp", exist_ok=True)
-    clip.write_videofile(
-        output_path,
-        codec="libx264",
-        fps=fps,
-        temp_audiofile=f"tmp/temp_audio_{randint(0, 100000000000)}.mp3",
-        logger="bar" if print_progress else None,
-    )
 
 
 def load_image_or_color(source: str, dimensions: tuple[int, int]) -> Image.Image:
@@ -60,21 +36,12 @@ def load_image_or_color(source: str, dimensions: tuple[int, int]) -> Image.Image
     return Image.open(source)
 
 
-def load_video(source: str, target_width: int, audio: bool) -> VideoFileClip:
-    return VideoFileClip(
-        source,
-        target_resolution=(None, target_width),
-        resize_algorithm="fast_bilinear",
-        audio=audio,
-    )
+def load_video(source: str, target_width: int):  # type: ignore
+    return ffmpeg.input(source).filter(f"scale={target_width}:-1")  # type: ignore
 
 
-def load_image_or_video(source: str, target_width: int) -> VideoClip:
-    if source.lower().endswith((".png", ".jpg", ".jpeg")):
-        image = load_image_or_color(source, (1920, 1080)).convert("RGB")
-        image.thumbnail((target_width, target_width))
-        return ImageClip(np.array(image))
-    return load_video(source, target_width, audio=False)
+def to_ffmpeg_frame(image: Image.Image):
+    return np.asarray(image, np.uint8).tobytes()
 
 
 @app.command()
@@ -93,12 +60,26 @@ def render_card(
     duration_seconds: float = 60,
     output_path: str = "out/output.mp4",
     print_progress: bool = True,
+    vcodec: str = "libx264",
 ):
     """Render card as a video file."""
     last_frame = math.floor(duration_seconds * fps)
     animation_start = max(0, round(last_frame - 30 * fps))
     logo = load_image_or_color(logo_source, dimensions=(152, 152))
-    card = Card(
+
+    process = (  # type: ignore
+        ffmpeg.input(
+            "pipe:",
+            format="rawvideo",
+            pix_fmt="rgba",
+            s=f"{target_card_width}x{target_card_height}",
+        )
+        .output(output_path, vcodec=vcodec, r=fps, pix_fmt="yuv420p")
+        .overwrite_output()
+        .run_async(pipe_stdin=True, quiet=not print_progress)
+    )
+
+    card_creator = Card(
         title=title,
         subtitle=subtitle,
         hashtag=hashtag,
@@ -112,15 +93,10 @@ def render_card(
         animation_start=animation_start,
         fps=fps,
     )
-    frames = [
-        card.render_frame(frame).convert("RGB")
-        for frame in tqdm(
-            range(last_frame + 1), desc="Rendering frames", disable=not print_progress
-        )
-    ]
-    process_video(
-        frames, fps=fps, output_path=output_path, print_progress=print_progress
-    )
+    for frame in range(last_frame + 1):
+        process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
+    process.stdin.close()
+    process.wait()
 
 
 @app.command()
@@ -137,26 +113,99 @@ def render_reaction(
     logo_source: str = "example/logo.png",
     webcam_source: str = "example/reaction.mp4",
     screen_source: str = "example/screen.mp4",
-    header_source: str = "example/header.png",
-    background_source: str = "#1F1F1F",
+    background_source: str = "example/background_vertical.png",
     success_audio_path: str = "example/success.mp3",
     fail_audio_path: str = "example/fail.mp3",
     output_path: str = "out/output.mp4",
     print_progress: bool = True,
+    vcodec: str = "libx264",
+    acodec: str = "libvorbis",
 ):
     """Render reaction as a video file."""
-    logo = load_image_or_color(logo_source, dimensions=(152, 152))
-    header = load_image_or_color(header_source, dimensions=(target_card_width, 40))
-    background = load_image_or_color(
-        background_source, dimensions=(1080, 1920)
-    ).convert("RGB")
-    screen = load_image_or_video(screen_source, target_width=target_card_width)
-    webcam = load_video(webcam_source, target_width=target_card_width, audio=True)
+    video_probe = typing.cast(
+        dict[str, str],
+        next(
+            (
+                stream
+                for stream in ffmpeg.probe(webcam_source)["streams"]
+                if stream["codec_type"] == "video"
+            ),
+        ),
+    )
+    # print(ffmpeg.probe(webcam_source))
+    fps = float(Fraction(video_probe["r_frame_rate"]))
+    last_frame = math.floor(float(video_probe["duration"]) * fps)
 
-    fps = float(webcam.fps)  # type: ignore
-    last_frame = math.floor(float(webcam.duration) * fps)  # type: ignore
+    width = 1080
+    height = 1920
+
+    logo = load_image_or_color(logo_source, dimensions=(152, 152))
+    webcam_full = ffmpeg.input(webcam_source)  # type: ignore
+    webcam = webcam_full.video.filter(  # type: ignore
+        "scale", w=target_card_width, h="-1"
+    )
+    screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
+        "scale", w=target_card_width, h="-1"
+    )
+    background = ffmpeg.input(background_source).filter("scale", w=width, h=height)  # type: ignore
+    card = ffmpeg.input(  # type: ignore
+        "pipe:",
+        format="rawvideo",
+        pix_fmt="rgba",
+        s=f"{target_card_width}x{target_card_height}",
+    )
+
     animation_start = max(0, round(last_frame - 30 * fps))
-    card = Card(
+
+    gap = 50
+
+    card_position = center_anchor(
+        (0, 0, width, height),
+        dimensions=(target_card_width, target_card_height),
+    )
+    webcam_position = place_above(
+        card_position,
+        dimensins=(target_card_width, target_card_width * 9 / 16),
+        gap=gap,
+    )
+    screen_position = place_below(
+        card_position,
+        dimensins=(target_card_width, target_card_width * 9 / 16),
+        gap=gap,
+    )
+    action_sound = (  # type: ignore
+        ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
+            "adelay", delays=animation_start / fps * 1000, all=1
+        )
+    )
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    video = (  # type: ignore
+        background.overlay(card, x=card_position[0], y=card_position[1])
+        .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
+        .overlay(screen, x=screen_position[0], y=screen_position[1])
+    )
+    audio = ffmpeg.filter(  # type: ignore
+        (webcam_full.audio, action_sound),  # type: ignore
+        "amix",
+        inputs=2,
+        duration="longest",
+    )
+    process = (  # type: ignore
+        ffmpeg.output(
+            audio,  # type: ignore
+            video,  # type: ignore
+            output_path,
+            vcodec=vcodec,
+            acodec=acodec,
+            r=fps,
+            pix_fmt="yuv420p",
+        )
+        .overwrite_output()
+        .run_async(pipe_stdin=True, quiet=not print_progress)
+    )
+
+    card_creator = Card(
         title=title,
         subtitle=subtitle,
         hashtag=hashtag,
@@ -170,44 +219,11 @@ def render_reaction(
         animation_start=animation_start,
         fps=fps,
     )
-    reaction = Reaction(
-        header=header,
-        success=success,
-        animation_start=animation_start,
-        fps=fps,
-    )
 
-    frames = [
-        reaction.render_frame(
-            frame,
-            background=background,
-            card=card.render_frame(frame),
-            webcam=Image.fromarray(webcam.get_frame(frame / fps)),
-            screen=Image.fromarray(screen.get_frame(frame / fps)),
-        )
-        for frame in tqdm(
-            range(last_frame + 1), desc="Rendering frames", disable=not print_progress
-        )
-    ]
-
-    submission_audio = (
-        AudioFileClip(success_audio_path) if success else AudioFileClip(fail_audio_path)
-    ).set_start((animation_start - 17) / fps)
-    audio = (
-        CompositeAudioClip([webcam.audio, submission_audio])
-        if webcam.audio
-        else submission_audio
-    )
-
-    process_video(
-        frames,
-        fps=fps,
-        output_path=output_path,
-        print_progress=print_progress,
-        audio=audio,
-    )
-    screen.close()
-    webcam.close()
+    for frame in range(last_frame + 1):
+        process.stdin.write(to_ffmpeg_frame(card_creator.render_frame(frame)))
+    process.stdin.close()
+    process.wait()
 
 
 def apply_cds_auth(url: str, cds_auth: str | None) -> str:
@@ -223,13 +239,14 @@ def build_submission(
     url: str,
     id: str,
     cds_auth: str | None = None,
-    header_source: str = "example/header.png",
-    background_source: str = "#1F1F1F",
+    background_source: str = "example/background_vertical.png",
     success_audio_path: str = "example/success.mp3",
     fail_audio_path: str = "example/fail.mp3",
     output_directory: str = "out",
     overwrite: bool = False,
     print_progress: bool = True,
+    vcodec: str = "libx264",
+    acodec: str = "libvorbis",
 ):
     """Render reaction as a video file."""
     output_path = os.path.join(output_directory, f"{id}.mp4")
@@ -259,12 +276,13 @@ def build_submission(
         ),
         webcam_source=apply_cds_auth(data["reactionVideos"][0]["url"], cds_auth),
         screen_source=apply_cds_auth(data["reactionVideos"][1]["url"], cds_auth),
-        header_source=header_source,
         background_source=background_source,
         success_audio_path=success_audio_path,
         fail_audio_path=fail_audio_path,
         output_path=output_path,
         print_progress=print_progress,
+        vcodec=vcodec,
+        acodec=acodec,
     )
 
 
@@ -273,11 +291,12 @@ def continuous_build_submission(
     url: str,
     cds_auth: str | None = None,
     processes: int | None = os.cpu_count(),
-    header_source: str = "example/header.png",
-    background_source: str = "#1F1F1F",
+    background_source: str = "example/background_vertical.png",
     success_audio_path: str = "example/success.mp3",
     fail_audio_path: str = "example/fail.mp3",
     output_directory: str = "out",
+    vcodec: str = "libx264",
+    acodec: str = "libvorbis",
 ):
     """Render reaction as a video file."""
 
@@ -287,13 +306,14 @@ def continuous_build_submission(
                 id=id,
                 url=url,
                 cds_auth=cds_auth,
-                header_source=header_source,
                 background_source=background_source,
                 success_audio_path=success_audio_path,
                 fail_audio_path=fail_audio_path,
                 output_directory=output_directory,
                 overwrite=False,
                 print_progress=False,
+                vcodec=vcodec,
+                acodec=acodec,
             )
         except Exception as e:
             typer.echo(f"Failed to render submission {id}: {e}")

@@ -1,11 +1,18 @@
 import math
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 def init_transparent_image(dimensions: tuple[int, int]) -> Image.Image:
     width, height = dimensions
     return Image.new("RGBA", (width, height), (0, 0, 0, 0))
+
+
+def rounded_mask(dimensions: tuple[int, int]) -> Image.Image:
+    mask = Image.new("1", dimensions, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle((0, 0, mask.width, mask.height), radius=48, fill=1)
+    return mask
 
 
 Box = tuple[float, float, float, float]

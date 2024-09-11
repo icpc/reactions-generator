@@ -78,8 +78,9 @@ def split_vertical(
 
 
 target_card_width = 1000
-target_card_height = 260
-target_card_padding_top = 48
+card_only_height = 260
+card_padding_top = 48
+target_card_height = card_only_height + card_padding_top
 
 
 @dataclass(frozen=True)
@@ -100,7 +101,7 @@ class Card:
     @functools.cached_property
     def resized_logo(self) -> Image.Image:
         logo = self.logo.copy()
-        logo.thumbnail((152, target_card_height))
+        logo.thumbnail((152, card_only_height))
         return logo
 
     def time_to_string(self, frame: int) -> str:
@@ -136,12 +137,10 @@ class Card:
         self,
         frame: int,
     ) -> Image.Image:
-        image = init_transparent_image(
-            (target_card_width, target_card_height + target_card_padding_top)
-        )
+        image = init_transparent_image((target_card_width, target_card_height))
         draw = ImageDraw.Draw(image)
         draw.rounded_rectangle(
-            [(0, target_card_padding_top), (image.width, image.height)],
+            [(0, card_padding_top), (image.width, image.height)],
             radius=48,
             fill=self.color_animation(frame),
         )
@@ -191,7 +190,7 @@ class Card:
 
         logo_xy = 152
         logo_box, content_box = split_horizontal(
-            (0, target_card_padding_top, image.width, image.height),
+            (0, card_padding_top, image.width, image.height),
             width=logo_xy,
             padding=40,
             gap=32,
