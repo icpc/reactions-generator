@@ -23,4 +23,4 @@ def load_helvetica_bold(size: int) -> ImageFont.FreeTypeFont:
 
 @functools.cache
 def load_monspaced(size: int) -> ImageFont.FreeTypeFont:
-    return load_font("Courier", "Courier").font_variant(size=size)
+    return load_font("Courier", "./courier.ttf").font_variant(size=size)
