@@ -79,10 +79,13 @@ def render(
     vcodec: str,
     acodec: str | None,
 ):
+    output_basename = os.path.basename(output_path)
+    output_dirname = os.path.dirname(output_path)
+    tmp_output = os.path.join(output_dirname, f"tmp_{output_basename}")
     process = (  # type: ignore
         ffmpeg.output(
             *ffmpeg_input,
-            output_path,
+            tmp_output,
             vcodec=vcodec,
             acodec=acodec,
             r=fps,
@@ -104,6 +107,7 @@ def render(
             process.stdin.write(to_ffmpeg_frame(card.render_frame(frame)))
         process.stdin.close()
         process.wait()
+        os.rename(tmp_output, output_path)
     except Exception as e:
         clean_up()
         raise e
