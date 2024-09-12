@@ -99,11 +99,14 @@ def render(
             process.wait()
 
     atexit.register(clean_up)
-
-    for frame in range(last_frame + 1):
-        process.stdin.write(to_ffmpeg_frame(card.render_frame(frame)))
-    process.stdin.close()
-    process.wait()
+    try:
+        for frame in range(last_frame + 1):
+            process.stdin.write(to_ffmpeg_frame(card.render_frame(frame)))
+        process.stdin.close()
+        process.wait()
+    except Exception as e:
+        clean_up()
+        raise e
 
 
 @app.command()
@@ -394,9 +397,9 @@ def build_submission(
             return
     response = requests.get(f"{url}/api/overlay/externalRun/{id}")
     data = response.json()
-    title = data["team"]["displayName"]
-    subtitle = data["team"]["customFields"]["clicsTeamFullName"]
-    hashtag = data["team"]["hashTag"]
+    title = data["team"].get("displayName", "")
+    subtitle = data["team"]["customFields"].get("clicsTeamFullName", "")
+    hashtag = data["team"].get("hashTag", "")
     task = data["problem"]["letter"]
     time = data["time"]
     outcome = data["result"]["verdict"]["shortName"]
