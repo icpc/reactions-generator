@@ -18,4 +18,5 @@ class Defaults:
     duration_seconds = 60
     vcodec = "libx264"
     acodec = "libvorbis"
-    output_path = "out/output.mp4"
+    output_directory = "out"
+    output_path = f"{output_directory}/output.mp4"
