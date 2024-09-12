@@ -13,12 +13,12 @@ def load_font(font: str, fallback: str) -> ImageFont.FreeTypeFont:
 
 @functools.cache
 def load_helvetica(size: int) -> ImageFont.FreeTypeFont:
-    return load_font("Helvetica", "helvetica.ttf").font_variant(size=size)
+    return load_font("Helvetica", "./helvetica.ttf").font_variant(size=size)
 
 
 @functools.cache
 def load_helvetica_bold(size: int) -> ImageFont.FreeTypeFont:
-    return load_font("Helvetica", "helvetica.ttf").font_variant(size=size, index=1)
+    return load_font("Helvetica Bold", "./helvetica_bold.ttf").font_variant(size=size)
 
 
 @functools.cache
