@@ -15,8 +15,6 @@ from reactions_generator.utils import (
     dimensions,
 )
 from reactions_generator.text_layout import (
-    draw_align_centre,
-    draw_align_left,
     auto_resize_text,
 )
 from reactions_generator.fonts import (
@@ -91,13 +89,18 @@ class Card:
     logo: Image.Image
     animation_start: int
     fps: float
+    width: int
+    height: int
 
-    width = 1000
-    height = 306
     top_padding = 48
-    actual_card_height = height - top_padding
 
-    size = (width, height)
+    @property
+    def actual_card_height(self) -> int:
+        return self.height - self.top_padding
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return (self.width, self.height)
 
     @functools.cached_property
     def resized_logo(self) -> Image.Image:
@@ -197,8 +200,10 @@ class Card:
             gap=32,
         )
         (title_box, task_box), (subtitle_box, status_box) = [
-            split_horizontal(box, width=500)
-            for box in split_vertical(content_box, height=150, padding=16, gap=16)
+            split_horizontal(box, width=self.width / 2 - 16, gap=16)
+            for box in split_vertical(
+                content_box, height=self.height / 2, padding=16, gap=32
+            )
         ]
         logo = self.resized_logo
         paste_with_alpha(
@@ -210,27 +215,50 @@ class Card:
         paste_with_alpha(
             image,
             auto_resize_text(
-                self.title, dimensions(title_box), load_helvetica_bold(10), max_size=150
+                self.title,
+                dimensions(title_box),
+                load_helvetica_bold(10),
+                allow_multiline=True,
+                allow_compression=True,
+                align_center=False,
             ),
             dest=(place_grid(title_box)[:2]),
         )
-        draw_align_left(
-            draw,
-            f"{self.subtitle} {self.hashtag}",
-            subtitle_box,
-            font=load_helvetica(32),
+        paste_with_alpha(
+            image,
+            auto_resize_text(
+                f"{self.subtitle} {self.hashtag}",
+                dimensions(subtitle_box),
+                load_helvetica(10),
+                allow_multiline=False,
+                allow_compression=True,
+                align_center=False,
+            ),
+            dest=(place_grid(subtitle_box)[:2]),
         )
-        draw_align_centre(
-            draw,
-            self.task,
-            task_box,
-            font=load_helvetica_bold(150),
+        paste_with_alpha(
+            image,
+            auto_resize_text(
+                self.task,
+                dimensions(task_box),
+                load_helvetica_bold(10),
+                allow_multiline=False,
+                allow_compression=False,
+                align_center=True,
+            ),
+            dest=(place_grid(task_box)[:2]),
         )
-        draw_align_centre(
-            draw,
-            f"{self.outcome_animation(frame)} {self.time_to_string(frame)}",
-            status_box,
-            font=load_monspaced(28),
+        paste_with_alpha(
+            image,
+            auto_resize_text(
+                f"{self.outcome_animation(frame)} {self.time_to_string(frame)}",
+                dimensions(status_box),
+                load_monspaced(10),
+                allow_multiline=False,
+                allow_compression=False,
+                align_center=True,
+            ),
+            dest=(place_grid(status_box)[:2]),
         )
 
         return image

@@ -149,6 +149,8 @@ def render_card(
         logo=logo,
         animation_start=animation_start,
         fps=fps,
+        width=1000,
+        height=306,
     )
 
     render(  # type: ignore
@@ -197,33 +199,48 @@ def render_reaction(
     metadata = get_metadata(webcam_source)
     fps = float(metadata.fps)
     last_frame = math.floor(metadata.duration * fps)
+    animation_start = max(0, round(last_frame - 30 * fps))
+
+    logo = load_image_or_color(logo_source, dimensions=(152, 152))
+    card_creator = Card(
+        title=title,
+        subtitle=subtitle,
+        hashtag=hashtag,
+        task=task,
+        time=time,
+        outcome=outcome,
+        success=success,
+        rank_before=rank_before,
+        rank_after=rank_after,
+        logo=logo,
+        animation_start=animation_start,
+        fps=fps,
+        width=1000,
+        height=306,
+    )
 
     width = 1080
     height = 1920
 
-    logo = load_image_or_color(logo_source, dimensions=(152, 152))
     webcam_full = ffmpeg.input(webcam_source)  # type: ignore
     webcam = webcam_full.video.filter(  # type: ignore
-        "scale", w=Card.width, h="-1"
+        "scale", w=card_creator.width, h="-1"
     )
     screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
-        "scale", w=Card.width, h="-1"
+        "scale", w=card_creator.width, h="-1"
     )
     background = ffmpeg.input(background_source).filter("scale", w=width, h=height)  # type: ignore
     card = ffmpeg.input(  # type: ignore
         "pipe:",
         format="rawvideo",
         pix_fmt="rgba",
-        s=f"{Card.width}x{Card.height}",
+        s=f"{card_creator.width}x{card_creator.height}",
         r=fps,
     )
 
-    animation_start = max(0, round(last_frame - 30 * fps))
-
     gap = 50
-
-    card_position = center_anchor((0, 0, width, height), dimensions=Card.size)
-    content_size = (Card.width, Card.width * 9 / 16)
+    card_position = center_anchor((0, 0, width, height), dimensions=card_creator.size)
+    content_size = (card_creator.width, card_creator.width * 9 / 16)
     webcam_position = place_above(
         card_position,
         dimensins=content_size,
@@ -234,6 +251,7 @@ def render_reaction(
         dimensins=content_size,
         gap=gap,
     )
+
     action_sound = (  # type: ignore
         ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
             "adelay", delays=animation_start / fps * 1000, all=1
@@ -251,20 +269,6 @@ def render_reaction(
         "amix",
         inputs=2,
         duration="longest",
-    )
-    card_creator = Card(
-        title=title,
-        subtitle=subtitle,
-        hashtag=hashtag,
-        task=task,
-        time=time,
-        outcome=outcome,
-        success=success,
-        rank_before=rank_before,
-        rank_after=rank_after,
-        logo=logo,
-        animation_start=animation_start,
-        fps=fps,
     )
 
     render(
@@ -292,6 +296,7 @@ def render_horizontal_reaction(
     rank_after: int = Defaults.rank_after,
     logo_source: str = Defaults.logo_source,
     webcam_source: str = Defaults.webcam_source,
+    screen_source: str = Defaults.screen_source,
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
     output_path: str = Defaults.output_path,
@@ -303,41 +308,16 @@ def render_horizontal_reaction(
     metadata = get_metadata(webcam_source)
     fps = float(metadata.fps)
     last_frame = math.floor(metadata.duration * fps)
+    animation_start = max(0, round(last_frame - 30 * fps))
 
     width = 1920
     height = 1080
 
+    screen_width = 640
+    screen_height = screen_width * 9 // 16
+    margin = 16
+
     logo = load_image_or_color(logo_source, dimensions=(152, 152))
-    webcam_full = ffmpeg.input(webcam_source)  # type: ignore
-    webcam = webcam_full.video.filter(  # type: ignore
-        "scale", w=width, h="-1"
-    )
-    card = ffmpeg.input(  # type: ignore
-        "pipe:",
-        format="rawvideo",
-        pix_fmt="rgba",
-        s=f"{Card.width}x{Card.height}",
-        r=fps,
-    )
-
-    animation_start = max(0, round(last_frame - 30 * fps))
-    action_sound = (  # type: ignore
-        ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
-            "adelay", delays=(animation_start / fps * 1000), all=1
-        )
-    )
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    video = (  # type: ignore
-        webcam.overlay(card, x=width - Card.width, y=height - Card.height)
-    )
-    audio = ffmpeg.filter(  # type: ignore
-        (webcam_full.audio, action_sound),  # type: ignore
-        "amix",
-        inputs=2,
-        duration="longest",
-    )
-
     card_creator = Card(
         title=title,
         subtitle=subtitle,
@@ -351,6 +331,48 @@ def render_horizontal_reaction(
         logo=logo,
         animation_start=animation_start,
         fps=fps,
+        width=1000,
+        height=300,
+    )
+
+    webcam_full = ffmpeg.input(webcam_source)  # type: ignore
+    webcam = webcam_full.video.filter(  # type: ignore
+        "scale", w=width, h=height
+    )
+    screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
+        "scale", w=screen_width, h="-1"
+    )
+    card = ffmpeg.input(  # type: ignore
+        "pipe:",
+        format="rawvideo",
+        pix_fmt="rgba",
+        s=f"{card_creator.width}x{card_creator.height}",
+        r=fps,
+    )
+
+    action_sound = (  # type: ignore
+        ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
+            "adelay", delays=animation_start / fps * 1000, all=1
+        )
+    )
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    video = (  # type: ignore
+        webcam.overlay(
+            screen,
+            x=margin,
+            y=height - screen_height - margin,
+        ).overlay(
+            card,
+            x=width - card_creator.width - margin,
+            y=height - card_creator.height - margin,
+        )
+    )
+    audio = ffmpeg.filter(  # type: ignore
+        (webcam_full.audio, action_sound),  # type: ignore
+        "amix",
+        inputs=2,
+        duration="longest",
     )
 
     render(
