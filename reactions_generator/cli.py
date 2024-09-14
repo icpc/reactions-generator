@@ -470,6 +470,7 @@ def build_submission(
             rank_after=rank_after,
             logo_source=logo_source,
             webcam_source=webcam_source,
+            screen_source=screen_source,
             success_audio_path=success_audio_path,
             fail_audio_path=fail_audio_path,
             output_path=output_path,
@@ -519,7 +520,7 @@ def continuous_build_submission(
 
         list(
             tqdm(
-                Parallel(return_as="generator", n_jobs=processes)(
+                Parallel(return_as="generator_unordered", n_jobs=processes)(
                     delayed(build_id)(id) for id in ids
                 ),
                 desc="Rendering submissions",
