@@ -76,6 +76,7 @@ def auto_resize_text(
     allow_multiline: bool,
     allow_compression: bool,
     align_center: bool,
+    max_size: int = 150,
 ) -> Image.Image:
     width, height = map(math.floor, dimensions)
     max_horizontal_compression = 1.5 if allow_compression else 1
@@ -99,6 +100,7 @@ def auto_resize_text(
         min(
             width / width_ratio * max_horizontal_compression,
             height / height_ratio,
+            max_size,
         )
     )
     image = init_transparent_image(

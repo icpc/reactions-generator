@@ -205,7 +205,7 @@ class Card:
         (title_box, task_box), (subtitle_box, status_box) = [
             split_horizontal(box, width=self.width / 2 - 16, gap=16)
             for box in split_vertical(
-                content_box, height=self.height / 2, padding=16, gap=32
+                content_box, height=self.height / 2, padding=16, gap=20
             )
         ]
         logo = self.resized_logo
@@ -236,6 +236,7 @@ class Card:
                 allow_multiline=False,
                 allow_compression=True,
                 align_center=False,
+                max_size=32,
             ),
             dest=(place_grid(subtitle_box)[:2]),
         )
@@ -260,8 +261,9 @@ class Card:
                 allow_multiline=False,
                 allow_compression=False,
                 align_center=True,
+                max_size=32,
             ),
-            dest=(place_grid(status_box)[:2]),
+            dest=((place_grid(status_box)[0], place_grid(status_box)[1] - 5)),
         )
 
         return image
