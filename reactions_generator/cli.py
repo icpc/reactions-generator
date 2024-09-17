@@ -17,6 +17,7 @@ import ffmpeg  # type: ignore
 
 from reactions_generator.defaults import Defaults
 from reactions_generator.card import Card
+import tempfile
 from reactions_generator.utils import (
     center_anchor,
     place_above,
@@ -53,20 +54,28 @@ class Metadata(NamedTuple):
 
 
 def get_metadata(video_path: str) -> Metadata:
-    probe = typing.cast(
-        dict[str, str],
-        next(
-            (
-                stream
-                for stream in ffmpeg.probe(video_path)["streams"]
-                if stream["codec_type"] == "video"
+    with tempfile.NamedTemporaryFile(delete=True) as tmp_file:
+        if video_path.startswith(("http://", "https://")):
+            response = requests.get(video_path)
+            if response.status_code != 200:
+                raise ValueError(f"Failed to download video from {video_path}")
+            tmp_file.write(response.content)
+            video_path = tmp_file.name
+
+        probe = typing.cast(
+            dict[str, str],
+            next(
+                (
+                    stream
+                    for stream in ffmpeg.probe(video_path)["streams"]
+                    if stream["codec_type"] == "video"
+                ),
             ),
-        ),
-    )
-    return Metadata(
-        fps=Fraction(probe["avg_frame_rate"]),
-        duration=float(probe["duration"]),
-    )
+        )
+        return Metadata(
+            fps=Fraction(probe["avg_frame_rate"]),
+            duration=float(probe["duration"]),
+        )
 
 
 def render(
@@ -90,7 +99,7 @@ def render(
             acodec=acodec,
             r=fps,
             pix_fmt="yuv420p",
-            loglevel="info" if print_progress else "quiet",
+            # loglevel="info" if print_progress else "quiet",
         )
         .overwrite_output()
         .run_async(pipe_stdin=True)
@@ -425,7 +434,11 @@ def build_submission(
     data = response.json()
     title = data["team"].get("displayName", "")
     subtitle = data["team"]["customFields"].get("clicsTeamFullName", "")
-    hashtag = data["team"].get("hashTag", "")
+    hashtag = data["team"].get("hashTag")
+    if hashtag is None:
+        hashtag = ""
+    else:
+        hashtag = f"#{hashtag}"
     task = data["problem"]["letter"]
     time = data["time"]
     outcome = data["result"]["verdict"]["shortName"]
