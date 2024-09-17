@@ -105,6 +105,8 @@ class Card:
     @functools.cached_property
     def resized_logo(self) -> Image.Image:
         logo = self.logo.copy()
+        factor = min(self.actual_card_height / logo.height, 152 / logo.width)
+        logo = logo.resize((round(logo.width * factor), round(logo.height * factor)))
         logo.thumbnail((152, self.actual_card_height))
         return logo
 
