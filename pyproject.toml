@@ -7,20 +7,18 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.10"
 requests = "^2.32.3"
 pillow = "^10.4.0"
 tqdm = "^4.66.5"
 typer = "^0.12.5"
 numpy = "^2.1.1"
-joblib = "^1.4.2"
 ffmpeg-python = "^0.2.0"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.1.1"
 ruff = "^0.6.3"
 pyright = "^1.1.378"
-joblib-stubs = "^1.4.2.4.20240825"
 
 [tool.poetry.scripts]
 main = "reactions_generator.cli:main"
