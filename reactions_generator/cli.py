@@ -54,28 +54,31 @@ class Metadata(NamedTuple):
 
 
 def get_metadata(video_path: str) -> Metadata:
-    with tempfile.NamedTemporaryFile(delete=True) as tmp_file:
-        if video_path.startswith(("http://", "https://")):
-            response = requests.get(video_path)
-            if response.status_code != 200:
-                raise ValueError(f"Failed to download video from {video_path}")
+    file = tempfile.mktemp()
+    if video_path.startswith(("http://", "https://")):
+        response = requests.get(video_path)
+        if response.status_code != 200:
+            raise ValueError(f"Failed to download video from {video_path}")
+        with open(file, "wb") as tmp_file:
             tmp_file.write(response.content)
-            video_path = tmp_file.name
+        video_path = file
 
-        probe = typing.cast(
-            dict[str, str],
-            next(
-                (
-                    stream
-                    for stream in ffmpeg.probe(video_path)["streams"]
-                    if stream["codec_type"] == "video"
-                ),
+    probe = typing.cast(
+        dict[str, str],
+        next(
+            (
+                stream
+                for stream in ffmpeg.probe(video_path)["streams"]
+                if stream["codec_type"] == "video"
             ),
-        )
-        return Metadata(
-            fps=Fraction(probe["avg_frame_rate"]),
-            duration=float(probe["duration"]),
-        )
+        ),
+    )
+    if video_path == file:
+        os.remove(file)
+    return Metadata(
+        fps=Fraction(probe["avg_frame_rate"]),
+        duration=float(probe["duration"]),
+    )
 
 
 def render(
