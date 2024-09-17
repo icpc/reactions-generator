@@ -438,7 +438,8 @@ def build_submission(
     if hashtag is None:
         hashtag = ""
     else:
-        hashtag = f"#{hashtag}"
+        if not hashtag.startswith("#"):
+            hashtag = f"#{hashtag}"
     task = data["problem"]["letter"]
     time = data["time"]
     outcome = data["result"]["verdict"]["shortName"]
