@@ -501,7 +501,6 @@ def build_submission(
 def continuous_build_submission(
     url: str,
     cds_auth: str | None = None,
-    processes: int | None = os.cpu_count(),
     background_source: str = Defaults.background_source,
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
@@ -509,42 +508,35 @@ def continuous_build_submission(
     vcodec: str = Defaults.vcodec,
     acodec: str = Defaults.acodec,
     vertical: bool = True,
+    total_workers: int = 1,
+    worker_id: int = 0,
 ):
     """Render reaction as a video file."""
-
-    def build_id(id: str):
-        try:
-            build_submission(
-                id=id,
-                url=url,
-                cds_auth=cds_auth,
-                background_source=background_source,
-                success_audio_path=success_audio_path,
-                fail_audio_path=fail_audio_path,
-                output_directory=output_directory,
-                overwrite=False,
-                print_progress=False,
-                vcodec=vcodec,
-                acodec=acodec,
-                vertical=vertical,
-            )
-        except Exception as e:
-            typer.echo(f"Failed to render submission {id}: {e}")
 
     while True:
         response = requests.get(f"{url}/api/overlay/runs")
         ids = [str(run["id"]) for run in response.json() if not run["isHidden"]]
 
-        list(
-            tqdm(
-                Parallel(return_as="generator_unordered", n_jobs=processes)(
-                    delayed(build_id)(id) for id in ids
-                ),
-                desc="Rendering submissions",
-                total=len(ids),
-                leave=False,
-            )
-        )
+        filtered = [id for id in ids if hash(id) % total_workers == worker_id]
+
+        for id in tqdm(filtered, desc="Rendering submissions"):
+            try:
+                build_submission(
+                    id=id,
+                    url=url,
+                    cds_auth=cds_auth,
+                    background_source=background_source,
+                    success_audio_path=success_audio_path,
+                    fail_audio_path=fail_audio_path,
+                    output_directory=output_directory,
+                    overwrite=False,
+                    print_progress=False,
+                    vcodec=vcodec,
+                    acodec=acodec,
+                    vertical=vertical,
+                )
+            except Exception as e:
+                typer.echo(f"Failed to render submission {id}: {e}")
 
 
 def main():
