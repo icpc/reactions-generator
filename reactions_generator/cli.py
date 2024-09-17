@@ -212,6 +212,12 @@ def render_reaction(
     last_frame = math.floor(metadata.duration * fps)
     animation_start = max(0, round(last_frame - 30 * fps))
 
+    try:
+        get_metadata(screen_source)
+    except Exception as e:
+        typer.echo(f"Failed to get metadata for screen source: {e}")
+        screen_source = f"{task}.png"
+
     logo = load_image_or_color(logo_source, dimensions=(152, 152))
     card_creator = Card(
         title=title,
@@ -320,6 +326,12 @@ def render_horizontal_reaction(
     fps = float(metadata.fps)
     last_frame = math.floor(metadata.duration * fps)
     animation_start = max(0, round(last_frame - 30 * fps))
+
+    try:
+        get_metadata(screen_source)
+    except Exception as e:
+        typer.echo(f"Failed to get metadata for screen source: {e}")
+        screen_source = f"{task}.png"
 
     width = 1920
     height = 1080
@@ -536,6 +548,8 @@ def continuous_build_submission(
                 )
             except Exception as e:
                 typer.echo(f"Failed to render submission {id}: {e}")
+                with open(f"{output_directory}/{id}.err", "w") as f:
+                    f.write(str(e))
 
 
 def main():
