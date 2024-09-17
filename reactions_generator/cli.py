@@ -176,7 +176,7 @@ def render_card(
             )
         ],
         card=card_creator,
-        last_frame=last_frame,
+        last_frame=min(last_frame, animation_start + 10),
         output_path=output_path,
         fps=fps,
         print_progress=print_progress,
@@ -286,7 +286,7 @@ def render_reaction(
     render(
         [audio, video],
         card=card_creator,
-        last_frame=last_frame,
+        last_frame=min(last_frame, animation_start + 10),
         output_path=output_path,
         fps=fps,
         print_progress=print_progress,
