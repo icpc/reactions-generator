@@ -106,7 +106,8 @@ class Card:
     def resized_logo(self) -> Image.Image:
         logo = self.logo.copy()
         factor = min(self.actual_card_height / logo.height, 152 / logo.width)
-        logo = logo.resize((round(logo.width * factor), round(logo.height * factor)))
+        width, height = map(lambda x: math.ceil(x * factor), logo.size)
+        logo = logo.resize((width, height))
         logo.thumbnail((152, self.actual_card_height))
         return logo
 
