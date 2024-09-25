@@ -28,9 +28,10 @@ def place_grid(box: Box) -> tuple[int, int, int, int]:
 
 
 def paste_with_alpha(
-    image: Image.Image, content: Image.Image, dest: tuple[int, int]
+    image: Image.Image, transparent_content: Image.Image, dest: tuple[int, int]
 ) -> Image.Image:
-    image.paste(content, dest, mask=content)
+    transparent_content = transparent_content.convert("RGBA")
+    image.paste(transparent_content, dest, mask=transparent_content)
     return image
 
 
