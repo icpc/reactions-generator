@@ -244,10 +244,10 @@ def render_reaction(
     webcam_full = ffmpeg.input(webcam_source)  # type: ignore
     webcam = webcam_full.video.filter(  # type: ignore
         "scale", w=card_creator.width, h="-1"
-    )
+    ).filter("setpts", "PTS-STARTPTS")
     screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
         "scale", w=card_creator.width, h="-1"
-    )
+    ).filter("setpts", "PTS-STARTPTS")
     background = ffmpeg.input(background_source).filter("scale", w=width, h=height)  # type: ignore
     card = ffmpeg.input(  # type: ignore
         "pipe:",
@@ -361,10 +361,10 @@ def render_horizontal_reaction(
     webcam_full = ffmpeg.input(webcam_source)  # type: ignore
     webcam = webcam_full.video.filter(  # type: ignore
         "scale", w=width, h=height
-    )
+    ).filter("setpts", "PTS-STARTPTS")
     screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
         "scale", w=screen_width, h="-1"
-    )
+    ).filter("setpts", "PTS-STARTPTS")
     card = ffmpeg.input(  # type: ignore
         "pipe:",
         format="rawvideo",
