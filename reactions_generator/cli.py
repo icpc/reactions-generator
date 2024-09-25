@@ -93,6 +93,7 @@ def render(
     output_basename = os.path.basename(output_path)
     output_dirname = os.path.dirname(output_path)
     tmp_output = os.path.join(output_dirname, f"tmp_{output_basename}")
+    os.makedirs(output_dirname, exist_ok=True)
     process = (  # type: ignore
         ffmpeg.output(
             *ffmpeg_input,
@@ -101,7 +102,7 @@ def render(
             acodec=acodec,
             r=fps,
             pix_fmt="yuv420p",
-            # loglevel="info" if print_progress else "quiet",
+            loglevel="info" if print_progress else "quiet",
         )
         .overwrite_output()
         .run_async(pipe_stdin=True)
@@ -118,7 +119,7 @@ def render(
             process.stdin.write(to_ffmpeg_frame(card.render_frame(frame)))
         process.stdin.close()
         process.wait()
-        os.rename(tmp_output, output_path)
+        os.replace(tmp_output, output_path)
     except Exception as e:
         clean_up()
         raise e
@@ -274,8 +275,6 @@ def render_reaction(
             "adelay", delays=animation_start / fps * 1000, all=1
         )
     )
-
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     video = (  # type: ignore
         background.overlay(card, x=card_position[0], y=card_position[1])
         .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
@@ -379,7 +378,6 @@ def render_horizontal_reaction(
         )
     )
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     video = (  # type: ignore
         webcam.overlay(
             screen,
@@ -410,19 +408,10 @@ def render_horizontal_reaction(
     )
 
 
-def apply_cds_auth(url: str, cds_auth: str | None) -> str:
-    if cds_auth is None:
-        return url
-    return url.replace("http://", f"http://{cds_auth}@").replace(
-        "https://", f"https://{cds_auth}@"
-    )
-
-
 @app.command()
 def build_submission(
     url: str,
     id: str,
-    cds_auth: str | None = None,
     background_source: str = Defaults.background_source,
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
@@ -460,9 +449,9 @@ def build_submission(
     success = data["result"]["verdict"]["isAccepted"]
     rank_before = data["team"]["rankBefore"]
     rank_after = data["team"]["rankAfter"]
-    logo_source = apply_cds_auth(data["team"]["organization"]["logo"]["url"], cds_auth)
-    webcam_source = apply_cds_auth(data["reactionVideos"][0]["url"], cds_auth)
-    screen_source = apply_cds_auth(data["reactionVideos"][1]["url"], cds_auth)
+    logo_source = data["team"]["organization"]["logo"]["url"]
+    webcam_source = data["reactionVideos"][0]["url"]
+    screen_source = data["reactionVideos"][1]["url"]
     if vertical:
         render_reaction(
             title=title,
@@ -508,10 +497,16 @@ def build_submission(
         )
 
 
+def log_error(error_string: str, id: str, output_directory: str):
+    typer.echo(f"Error in {id}: {error_string}", err=True)
+    os.makedirs(output_directory, exist_ok=True)
+    with open(f"{output_directory}/{id}.err", "w") as f:
+        f.write(error_string)
+
+
 @app.command()
 def continuous_build_submission(
     url: str,
-    cds_auth: str | None = None,
     background_source: str = Defaults.background_source,
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
@@ -523,6 +518,7 @@ def continuous_build_submission(
     worker_id: int = 0,
 ):
     """Render reaction as a video file."""
+    os.makedirs(output_directory, exist_ok=True)
 
     while True:
         response = requests.get(f"{url}/api/overlay/runs")
@@ -535,7 +531,6 @@ def continuous_build_submission(
                 build_submission(
                     id=id,
                     url=url,
-                    cds_auth=cds_auth,
                     background_source=background_source,
                     success_audio_path=success_audio_path,
                     fail_audio_path=fail_audio_path,
@@ -546,10 +541,14 @@ def continuous_build_submission(
                     acodec=acodec,
                     vertical=vertical,
                 )
+            except ffmpeg.Error as e:
+                log_error(
+                    os.linesep.join([str(x) for x in [e, e.stdout, e.stderr]]),
+                    id=id,
+                    output_directory=output_directory,
+                )
             except Exception as e:
-                typer.echo(f"Failed to render submission {id}: {e}")
-                with open(f"{output_directory}/{id}.err", "w") as f:
-                    f.write(str(e))
+                log_error(str(e), id=id, output_directory=output_directory)
 
 
 def main():
