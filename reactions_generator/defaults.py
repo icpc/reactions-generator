@@ -17,6 +17,6 @@ class Defaults:
     fps = 30
     duration_seconds = 60
     vcodec = "libx264"
-    acodec = "libvorbis"
+    acodec = "aac"
     output_directory = "out"
     output_path = f"{output_directory}/output.mp4"
