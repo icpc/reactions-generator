@@ -3,6 +3,7 @@ import math
 import typing
 import requests
 import atexit
+import hashlib
 from io import BytesIO
 from fractions import Fraction
 from typing import Any, NamedTuple
@@ -504,6 +505,13 @@ def log_error(error_string: str, id: str, output_directory: str):
         f.write(error_string)
 
 
+def stable_hash(input_string: str):
+    hash_object = hashlib.sha256()
+    hash_object.update(input_string.encode("utf-8"))
+    hash_int = int(hash_object.hexdigest(), 16)
+    return hash_int
+
+
 @app.command()
 def continuous_build_submission(
     url: str,
@@ -524,7 +532,7 @@ def continuous_build_submission(
         response = requests.get(f"{url}/api/overlay/runs")
         ids = [str(run["id"]) for run in response.json() if not run["isHidden"]]
 
-        filtered = [id for id in ids if hash(id) % total_workers == worker_id]
+        filtered = [id for id in ids if stable_hash(id) % total_workers == worker_id]
 
         for id in tqdm(filtered, desc="Rendering submissions"):
             try:
