@@ -93,7 +93,8 @@ def auto_resize_text(
         font.font_variant(size=measure_size),
         multiline,
     )
-    measure_width *= 1 + 2 / 64
+    # Let's add double of the measure error to our dimensions just to be sure
+    measure_width *= 1 + 2 / 64 
     measure_height *= 1 + 2 / 64
     width_ratio = measure_width / measure_size
     height_ratio = measure_height / measure_size
