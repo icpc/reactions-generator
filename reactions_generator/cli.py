@@ -126,7 +126,7 @@ def render(
         raise e
 
 
-@app.command("card")
+@app.command("card", help="Render a manual card.")
 def render_card(
     title: str = Defaults.title,
     subtitle: str = Defaults.subtitle,
@@ -186,7 +186,7 @@ def render_card(
     )
 
 
-@app.command("reaction")
+@app.command("reaction", help="Render a manual vertical reaction.")
 def render_reaction(
     title: str = Defaults.title,
     subtitle: str = Defaults.subtitle,
@@ -302,7 +302,7 @@ def render_reaction(
     )
 
 
-@app.command("reaction-h")
+@app.command("reaction-h", help="Render a manual horizontal reaction.")
 def render_horizontal_reaction(
     title: str = Defaults.title,
     subtitle: str = Defaults.subtitle,
@@ -413,7 +413,7 @@ def render_horizontal_reaction(
     )
 
 
-@app.command("single")
+@app.command("single", help="Render one submission from the overlayer.")
 def build_submission(
     url: str,
     id: str,
@@ -516,7 +516,7 @@ def stable_hash(input_string: str):
     return hash_int
 
 
-@app.command("all")
+@app.command("all", help="Continuously render all submissions from the overlayer.")
 def continuous_build_submission(
     url: str,
     background_source: str = Defaults.background_source,
