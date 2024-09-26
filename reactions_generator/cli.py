@@ -126,7 +126,7 @@ def render(
         raise e
 
 
-@app.command()
+@app.command("card")
 def render_card(
     title: str = Defaults.title,
     subtitle: str = Defaults.subtitle,
@@ -186,7 +186,7 @@ def render_card(
     )
 
 
-@app.command()
+@app.command("reaction")
 def render_reaction(
     title: str = Defaults.title,
     subtitle: str = Defaults.subtitle,
@@ -245,9 +245,11 @@ def render_reaction(
     webcam = webcam_full.video.filter(  # type: ignore
         "scale", w=card_creator.width, h="-1"
     ).filter("setpts", "PTS-STARTPTS")
-    screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
-        "scale", w=card_creator.width, h="-1"
-    ).filter("setpts", "PTS-STARTPTS")
+    screen = (  # type: ignore
+        ffmpeg.input(screen_source)
+        .video.filter("scale", w=card_creator.width, h="-1")
+        .filter("setpts", "PTS-STARTPTS")
+    )
     background = ffmpeg.input(background_source).filter("scale", w=width, h=height)  # type: ignore
     card = ffmpeg.input(  # type: ignore
         "pipe:",
@@ -300,7 +302,7 @@ def render_reaction(
     )
 
 
-@app.command()
+@app.command("reaction-h")
 def render_horizontal_reaction(
     title: str = Defaults.title,
     subtitle: str = Defaults.subtitle,
@@ -362,9 +364,11 @@ def render_horizontal_reaction(
     webcam = webcam_full.video.filter(  # type: ignore
         "scale", w=width, h=height
     ).filter("setpts", "PTS-STARTPTS")
-    screen = ffmpeg.input(screen_source).video.filter(  # type: ignore
-        "scale", w=screen_width, h="-1"
-    ).filter("setpts", "PTS-STARTPTS")
+    screen = (  # type: ignore
+        ffmpeg.input(screen_source)
+        .video.filter("scale", w=screen_width, h="-1")
+        .filter("setpts", "PTS-STARTPTS")
+    )
     card = ffmpeg.input(  # type: ignore
         "pipe:",
         format="rawvideo",
@@ -409,7 +413,7 @@ def render_horizontal_reaction(
     )
 
 
-@app.command()
+@app.command("single")
 def build_submission(
     url: str,
     id: str,
@@ -512,7 +516,7 @@ def stable_hash(input_string: str):
     return hash_int
 
 
-@app.command()
+@app.command("all")
 def continuous_build_submission(
     url: str,
     background_source: str = Defaults.background_source,
