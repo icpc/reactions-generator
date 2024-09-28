@@ -51,6 +51,7 @@ def to_ffmpeg_frame(image: Image.Image):
 class Metadata(NamedTuple):
     fps: Fraction
     duration: float
+    audio: bool
 
 
 def get_metadata(video_path: str) -> Metadata:
@@ -63,14 +64,12 @@ def get_metadata(video_path: str) -> Metadata:
             tmp_file.write(response.content)
         video_path = file
 
+    streams = list(ffmpeg.probe(video_path)["streams"])
+
     probe = typing.cast(
         dict[str, str],
         next(
-            (
-                stream
-                for stream in ffmpeg.probe(video_path)["streams"]
-                if stream["codec_type"] == "video"
-            ),
+            (stream for stream in streams if stream["codec_type"] == "video"),
         ),
     )
     if video_path == file:
@@ -78,6 +77,7 @@ def get_metadata(video_path: str) -> Metadata:
     return Metadata(
         fps=Fraction(probe["avg_frame_rate"]),
         duration=float(probe["duration"]),
+        audio=any(stream["codec_type"] == "audio" for stream in streams),
     )
 
 
@@ -283,11 +283,15 @@ def render_reaction(
         .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
         .overlay(screen, x=screen_position[0], y=screen_position[1])
     )
-    audio = ffmpeg.filter(  # type: ignore
-        (webcam_full.audio, action_sound),  # type: ignore
-        "amix",
-        inputs=2,
-        duration="longest",
+    audio = ( # type: ignore
+        ffmpeg.filter(  # type: ignore
+            (webcam_full.audio, action_sound),  
+            "amix",
+            inputs=2,
+            duration="longest",
+        )
+        if metadata.audio
+        else action_sound
     )
 
     render(
@@ -394,11 +398,15 @@ def render_horizontal_reaction(
             y=height - card_creator.height - margin,
         )
     )
-    audio = ffmpeg.filter(  # type: ignore
-        (webcam_full.audio, action_sound),  # type: ignore
-        "amix",
-        inputs=2,
-        duration="longest",
+    audio = ( # type: ignore
+        ffmpeg.filter(  # type: ignore
+            (webcam_full.audio, action_sound),  
+            "amix",
+            inputs=2,
+            duration="longest",
+        )
+        if metadata.audio
+        else action_sound
     )
 
     render(
