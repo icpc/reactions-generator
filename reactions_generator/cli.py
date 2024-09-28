@@ -54,12 +54,13 @@ class Metadata(NamedTuple):
     audio: bool
 
 
-def get_metadata(video_path: str) -> Metadata:
+def get_metadata(video_source: str, expect_audio: bool = False) -> Metadata:
     file = tempfile.mktemp()
-    if video_path.startswith(("http://", "https://")):
-        response = requests.get(video_path)
+    video_path = video_source
+    if video_source.startswith(("http://", "https://")):
+        response = requests.get(video_source)
         if response.status_code != 200:
-            raise ValueError(f"Failed to download video from {video_path}")
+            raise ValueError(f"Failed to download video from {video_source}")
         with open(file, "wb") as tmp_file:
             tmp_file.write(response.content)
         video_path = file
@@ -74,11 +75,16 @@ def get_metadata(video_path: str) -> Metadata:
     )
     if video_path == file:
         os.remove(file)
-    return Metadata(
+    metadata = Metadata(
         fps=Fraction(probe["avg_frame_rate"]),
         duration=float(probe["duration"]),
         audio=any(stream["codec_type"] == "audio" for stream in streams),
     )
+
+    if not metadata.audio and expect_audio:
+        typer.echo(f"Audio missing in {video_source}", err=True)
+
+    return metadata
 
 
 def render(
@@ -209,7 +215,7 @@ def render_reaction(
     print_progress: bool = True,
 ):
     """Render reaction as a video file."""
-    metadata = get_metadata(webcam_source)
+    metadata = get_metadata(webcam_source, expect_audio=True)
     fps = float(metadata.fps)
     last_frame = math.floor(metadata.duration * fps)
     animation_start = max(0, round(last_frame - 30 * fps))
@@ -283,9 +289,9 @@ def render_reaction(
         .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
         .overlay(screen, x=screen_position[0], y=screen_position[1])
     )
-    audio = ( # type: ignore
+    audio = (  # type: ignore
         ffmpeg.filter(  # type: ignore
-            (webcam_full.audio, action_sound),  
+            (webcam_full.audio, action_sound),
             "amix",
             inputs=2,
             duration="longest",
@@ -328,7 +334,7 @@ def render_horizontal_reaction(
     print_progress: bool = True,
 ):
     """Render reaction as a video file."""
-    metadata = get_metadata(webcam_source)
+    metadata = get_metadata(webcam_source, expect_audio=True)
     fps = float(metadata.fps)
     last_frame = math.floor(metadata.duration * fps)
     animation_start = max(0, round(last_frame - 30 * fps))
@@ -398,9 +404,9 @@ def render_horizontal_reaction(
             y=height - card_creator.height - margin,
         )
     )
-    audio = ( # type: ignore
+    audio = (  # type: ignore
         ffmpeg.filter(  # type: ignore
-            (webcam_full.audio, action_sound),  
+            (webcam_full.audio, action_sound),
             "amix",
             inputs=2,
             duration="longest",
