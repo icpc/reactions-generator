@@ -71,12 +71,9 @@ class Metadata(NamedTuple):
 
 
 def direct_ffprobe(video_source: str) -> Metadata:
-    streams = list(ffmpeg.probe(video_source)["streams"])
-    probe = typing.cast(
-        dict[str, str],
-        next(
-            (stream for stream in streams if stream["codec_type"] == "video"),
-        ),
+    streams = ffmpeg.probe(video_source)["streams"]
+    probe = next(
+        (stream for stream in streams if stream["codec_type"] == "video"),
     )
     return Metadata(
         fps=Fraction(probe["avg_frame_rate"]),
