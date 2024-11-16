@@ -4,6 +4,7 @@ import typing
 import requests
 import atexit
 import hashlib
+import subprocess
 import re
 from datetime import timedelta
 from io import BytesIO
@@ -49,11 +50,11 @@ def load_image_or_color(source: str, dimensions: tuple[int, int]) -> Image.Image
     return Image.open(source)
 
 
-def load_video(source: str, target_width: int):  # type: ignore
+def load_video(source: str, target_width: int) -> Any:
     return ffmpeg.input(source).filter(f"scale={target_width}:-1")  # type: ignore
 
 
-def to_ffmpeg_frame(image: Image.Image):
+def to_ffmpeg_frame(image: Image.Image) -> bytes:
     return np.asarray(image, np.uint8).tobytes()
 
 
@@ -95,12 +96,13 @@ def download_and_ffprobe(video_source: str) -> Metadata:
 
 
 def metadata_via_ffmpeg(video_source: str):
-    _, error_output = (  # type: ignore
+    _, error_output = typing.cast(
+        tuple[bytes, bytes],
         ffmpeg.input(video_source)
         .output("null", format="null")
-        .run(capture_stdout=True, capture_stderr=True)
+        .run(capture_stdout=True, capture_stderr=True),
     )
-    error_output = str(error_output)  # type: ignore
+    error_output = str(error_output)
 
     pattern = r"frame=\s*(\d+).*?time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})"
     frames, hours, minutes, seconds, milliseconds = re.findall(
@@ -147,7 +149,8 @@ def render(
     output_dirname = os.path.dirname(output_path)
     tmp_output = os.path.join(output_dirname, f"tmp_{output_basename}")
     os.makedirs(output_dirname, exist_ok=True)
-    process = (  # type: ignore
+    process = typing.cast(
+        subprocess.Popen[bytes],
         ffmpeg.output(
             *ffmpeg_input,
             tmp_output,
@@ -158,7 +161,7 @@ def render(
             loglevel="info" if print_progress else "quiet",
         )
         .overwrite_output()
-        .run_async(pipe_stdin=True)
+        .run_async(pipe_stdin=True),
     )
 
     def clean_up():
@@ -168,6 +171,9 @@ def render(
 
     atexit.register(clean_up)
     try:
+        if not isinstance(process.stdin, typing.IO):
+            raise ValueError("Process input is not a string IO")
+
         for frame in range(last_frame + 1):
             process.stdin.write(to_ffmpeg_frame(card.render_frame(frame)))
         process.stdin.close()
@@ -218,7 +224,7 @@ def render_card(
         height=306,
     )
 
-    render(  # type: ignore
+    render(
         [
             ffmpeg.input(
                 "pipe:",
