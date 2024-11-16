@@ -4,7 +4,6 @@ import typing
 import requests
 import atexit
 import hashlib
-import subprocess
 import re
 from datetime import timedelta
 from io import BytesIO
@@ -17,7 +16,8 @@ from tqdm import tqdm
 
 from PIL import Image, ImageColor
 import cairosvg  # type: ignore
-import ffmpeg  # type: ignore
+import ffmpeg
+import ffmpeg.types
 
 from reactions_generator.defaults import Defaults
 from reactions_generator.card import Card
@@ -50,8 +50,14 @@ def load_image_or_color(source: str, dimensions: tuple[int, int]) -> Image.Image
     return Image.open(source)
 
 
-def load_video(source: str, target_width: int) -> Any:
-    return ffmpeg.input(source).filter(f"scale={target_width}:-1")  # type: ignore
+def pipe_card_input(width: int, height: int, fps: float) -> ffmpeg.VideoStream:
+    return ffmpeg.input(
+        "pipe:",
+        f="rawvideo",
+        pix_fmt="rgba",
+        s=f"{width}x{height}",
+        r=fps,
+    ).video
 
 
 def to_ffmpeg_frame(image: Image.Image) -> bytes:
@@ -96,12 +102,12 @@ def download_and_ffprobe(video_source: str) -> Metadata:
 
 
 def metadata_via_ffmpeg(video_source: str):
-    _, error_output = typing.cast(
-        tuple[bytes, bytes],
+    _, error_output = (
         ffmpeg.input(video_source)
-        .output("null", format="null")
-        .run(capture_stdout=True, capture_stderr=True),
+        .output(filename="null", format="null")
+        .run(capture_stderr=True)
     )
+
     error_output = str(error_output)
 
     pattern = r"frame=\s*(\d+).*?time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})"
@@ -149,19 +155,18 @@ def render(
     output_dirname = os.path.dirname(output_path)
     tmp_output = os.path.join(output_dirname, f"tmp_{output_basename}")
     os.makedirs(output_dirname, exist_ok=True)
-    process = typing.cast(
-        subprocess.Popen[bytes],
+    process = (
         ffmpeg.output(
             *ffmpeg_input,
-            tmp_output,
+            filename=tmp_output,
             vcodec=vcodec,
-            acodec=acodec,
+            acodec=typing.cast(ffmpeg.types.String, acodec),
             r=fps,
             pix_fmt="yuv420p",
             loglevel="info" if print_progress else "quiet",
         )
         .overwrite_output()
-        .run_async(pipe_stdin=True),
+        .run_async(pipe_stdin=True, auto_fix=False)
     )
 
     def clean_up():
@@ -225,15 +230,7 @@ def render_card(
     )
 
     render(
-        [
-            ffmpeg.input(
-                "pipe:",
-                format="rawvideo",
-                pix_fmt="rgba",
-                s=f"{Card.width}x{Card.height}",
-                r=fps,
-            )
-        ],
+        [pipe_card_input(Card.width, Card.height, fps)],
         card=card_creator,
         last_frame=min(last_frame, animation_start + 10),
         output_path=output_path,
@@ -299,23 +296,17 @@ def render_reaction(
     width = 1080
     height = 1920
 
-    webcam_full = ffmpeg.input(webcam_source)  # type: ignore
-    webcam = webcam_full.video.filter(  # type: ignore
-        "scale", w=card_creator.width, h="-1"
-    ).filter("setpts", "PTS-STARTPTS")
-    screen = (  # type: ignore
+    webcam_full = ffmpeg.input(webcam_source)
+    webcam = webcam_full.video.scale(w=card_creator.width, h=-1).setpts(
+        expr="PTS-STARTPTS"
+    )
+    screen = (
         ffmpeg.input(screen_source)
-        .video.filter("scale", w=card_creator.width, h="-1")
-        .filter("setpts", "PTS-STARTPTS")
+        .video.scale(w=card_creator.width, h=-1)
+        .setpts(expr="PTS-STARTPTS")
     )
-    background = ffmpeg.input(background_source).filter("scale", w=width, h=height)  # type: ignore
-    card = ffmpeg.input(  # type: ignore
-        "pipe:",
-        format="rawvideo",
-        pix_fmt="rgba",
-        s=f"{card_creator.width}x{card_creator.height}",
-        r=fps,
-    )
+    background = ffmpeg.input(background_source).scale(w=width, h=height)
+    card = pipe_card_input(card_creator.width, card_creator.height, fps)
 
     gap = 50
     card_position = center_anchor((0, 0, width, height), dimensions=card_creator.size)
@@ -331,21 +322,20 @@ def render_reaction(
         gap=gap,
     )
 
-    action_sound = (  # type: ignore
-        ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
-            "adelay", delays=animation_start / fps * 1000, all=1
+    action_sound = ffmpeg.input(
+        success_audio_path if success else fail_audio_path
+    ).adelay(delays=animation_start / fps * 1000, all=True)
+    video = (
+        background.overlay(
+            card, x=card_position[0], y=card_position[1], eof_action="repeat"
         )
-    )
-    video = (  # type: ignore
-        background.overlay(card, x=card_position[0], y=card_position[1])
         .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
         .overlay(screen, x=screen_position[0], y=screen_position[1])
     )
-    audio = (  # type: ignore
-        ffmpeg.filter(  # type: ignore
-            (webcam_full.audio, action_sound),
-            "amix",
-            inputs=2,
+    audio = (
+        ffmpeg.filters.amix(
+            webcam_full.audio,
+            action_sound,
             duration="longest",
         )
         if metadata.audio
@@ -422,45 +412,32 @@ def render_horizontal_reaction(
         height=300,
     )
 
-    webcam_full = ffmpeg.input(webcam_source)  # type: ignore
-    webcam = webcam_full.video.filter(  # type: ignore
-        "scale", w=width, h=height
-    ).filter("setpts", "PTS-STARTPTS")
-    screen = (  # type: ignore
+    webcam_full = ffmpeg.input(webcam_source)
+    webcam = webcam_full.video.scale(w=width, h=height).setpts(expr="PTS-STARTPTS")
+    screen = (
         ffmpeg.input(screen_source)
-        .video.filter("scale", w=screen_width, h="-1")
-        .filter("setpts", "PTS-STARTPTS")
+        .video.scale(w=screen_width, h=-1)
+        .setpts(expr="PTS-STARTPTS")
     )
-    card = ffmpeg.input(  # type: ignore
-        "pipe:",
-        format="rawvideo",
-        pix_fmt="rgba",
-        s=f"{card_creator.width}x{card_creator.height}",
-        r=fps,
-    )
+    card = pipe_card_input(card_creator.width, card_creator.height, fps)
 
-    action_sound = (  # type: ignore
-        ffmpeg.input(success_audio_path if success else fail_audio_path).filter(
-            "adelay", delays=animation_start / fps * 1000, all=1
-        )
-    )
+    action_sound = ffmpeg.input(
+        success_audio_path if success else fail_audio_path
+    ).adelay(delays=animation_start / fps * 1000, all=True)
 
-    video = (  # type: ignore
-        webcam.overlay(
-            screen,
-            x=margin,
-            y=height - screen_height - margin,
-        ).overlay(
-            card,
-            x=width - card_creator.width - margin,
-            y=height - card_creator.height - margin,
-        )
+    video = webcam.overlay(
+        screen,
+        x=margin,
+        y=height - screen_height - margin,
+    ).overlay(
+        card,
+        x=width - card_creator.width - margin,
+        y=height - card_creator.height - margin,
     )
-    audio = (  # type: ignore
-        ffmpeg.filter(  # type: ignore
-            (webcam_full.audio, action_sound),
-            "amix",
-            inputs=2,
+    audio = (
+        ffmpeg.filters.amix(
+            webcam_full.audio,
+            action_sound,
             duration="longest",
         )
         if metadata.audio
@@ -619,7 +596,7 @@ def continuous_build_submission(
                     acodec=acodec,
                     vertical=vertical,
                 )
-            except ffmpeg.Error as e:
+            except ffmpeg.exceptions.FFMpegExecuteError as e:
                 log_error(
                     os.linesep.join([str(x) for x in [e, e.stdout, e.stderr]]),
                     id=id,
