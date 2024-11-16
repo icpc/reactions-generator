@@ -130,8 +130,8 @@ def get_metadata(video_source: str, expect_audio: bool = False) -> Metadata:
             if not metadata.audio and expect_audio:
                 typer.echo(f"Audio missing in {video_source}", err=True)
             return metadata
-        except Exception as _:
-            continue
+        except Exception as e:
+            print(e)
     raise ValueError(f"No metadata found for {video_source}")
 
 
@@ -171,8 +171,8 @@ def render(
 
     atexit.register(clean_up)
     try:
-        if not isinstance(process.stdin, typing.IO):
-            raise ValueError("Process input is not a string IO")
+        if not process.stdin:
+            raise ValueError("Process input is none")
 
         for frame in range(last_frame + 1):
             process.stdin.write(to_ffmpeg_frame(card.render_frame(frame)))
