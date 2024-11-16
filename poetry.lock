@@ -214,6 +214,47 @@ webencodings = "*"
 css = ["tinycss2 (>=1.1.0,<1.3)"]
 
 [[package]]
+name = "cairocffi"
+version = "1.7.1"
+description = "cffi-based cairo bindings for Python"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "cairocffi-1.7.1-py3-none-any.whl", hash = "sha256:9803a0e11f6c962f3b0ae2ec8ba6ae45e957a146a004697a1ac1bbf16b073b3f"},
+    {file = "cairocffi-1.7.1.tar.gz", hash = "sha256:2e48ee864884ec4a3a34bfa8c9ab9999f688286eb714a15a43ec9d068c36557b"},
+]
+
+[package.dependencies]
+cffi = ">=1.1.0"
+
+[package.extras]
+doc = ["sphinx", "sphinx_rtd_theme"]
+test = ["numpy", "pikepdf", "pytest", "ruff"]
+xcb = ["xcffib (>=1.4.0)"]
+
+[[package]]
+name = "cairosvg"
+version = "2.7.1"
+description = "A Simple SVG Converter based on Cairo"
+optional = false
+python-versions = ">=3.5"
+files = [
+    {file = "CairoSVG-2.7.1-py3-none-any.whl", hash = "sha256:8a5222d4e6c3f86f1f7046b63246877a63b49923a1cd202184c3a634ef546b3b"},
+    {file = "CairoSVG-2.7.1.tar.gz", hash = "sha256:432531d72347291b9a9ebfb6777026b607563fd8719c46ee742db0aef7271ba0"},
+]
+
+[package.dependencies]
+cairocffi = "*"
+cssselect2 = "*"
+defusedxml = "*"
+pillow = "*"
+tinycss2 = "*"
+
+[package.extras]
+doc = ["sphinx", "sphinx-rtd-theme"]
+test = ["flake8", "isort", "pytest"]
+
+[[package]]
 name = "certifi"
 version = "2024.8.30"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -443,6 +484,25 @@ traitlets = ">=4"
 
 [package.extras]
 test = ["pytest"]
+
+[[package]]
+name = "cssselect2"
+version = "0.7.0"
+description = "CSS selectors for Python ElementTree"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "cssselect2-0.7.0-py3-none-any.whl", hash = "sha256:fd23a65bfd444595913f02fc71f6b286c29261e354c41d722ca7a261a49b5969"},
+    {file = "cssselect2-0.7.0.tar.gz", hash = "sha256:1ccd984dab89fc68955043aca4e1b03e0cf29cad9880f6e28e3ba7a74b14aa5a"},
+]
+
+[package.dependencies]
+tinycss2 = "*"
+webencodings = "*"
+
+[package.extras]
+doc = ["sphinx", "sphinx_rtd_theme"]
+test = ["flake8", "isort", "pytest"]
 
 [[package]]
 name = "debugpy"
@@ -2556,4 +2616,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "05e1e76ad57c9d905ce7ea0b883171622c480f03f92faeb950901e64eedccdd8"
+content-hash = "5762823922e7be65253285aac47c2821c5e6f9327df29d8e9e39d8de5600f924"
