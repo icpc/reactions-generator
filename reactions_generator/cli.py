@@ -4,6 +4,8 @@ import typing
 import requests
 import atexit
 import hashlib
+import re
+from datetime import timedelta
 from io import BytesIO
 from fractions import Fraction
 from typing import Any, NamedTuple
@@ -54,37 +56,76 @@ class Metadata(NamedTuple):
     audio: bool
 
 
-def get_metadata(video_source: str, expect_audio: bool = False) -> Metadata:
-    file = tempfile.mktemp()
-    video_path = video_source
-    if video_source.startswith(("http://", "https://")):
-        response = requests.get(video_source)
-        if response.status_code != 200:
-            raise ValueError(f"Failed to download video from {video_source}")
-        with open(file, "wb") as tmp_file:
-            tmp_file.write(response.content)
-        video_path = file
-
-    streams = list(ffmpeg.probe(video_path)["streams"])
-
+def direct_ffprobe(video_source: str) -> Metadata:
+    streams = list(ffmpeg.probe(video_source)["streams"])
     probe = typing.cast(
         dict[str, str],
         next(
             (stream for stream in streams if stream["codec_type"] == "video"),
         ),
     )
-    if video_path == file:
-        os.remove(file)
-    metadata = Metadata(
+    return Metadata(
         fps=Fraction(probe["avg_frame_rate"]),
         duration=float(probe["duration"]),
         audio=any(stream["codec_type"] == "audio" for stream in streams),
     )
 
-    if not metadata.audio and expect_audio:
-        typer.echo(f"Audio missing in {video_source}", err=True)
+
+def download_and_ffprobe(video_source: str) -> Metadata:
+    if not video_source.startswith(("http://", "https://")):
+        raise ValueError(f"{video_source} is not a URL")
+
+    response = requests.get(video_source)
+    if response.status_code != 200:
+        raise ValueError(f"Failed to download video from {video_source}")
+
+    with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
+        fp.write(response.content)
+        fp.close()
+        metadata = direct_ffprobe(fp.name)
 
     return metadata
+
+
+def metadata_via_ffmpeg(video_source: str):
+    _, error_output = (  # type: ignore
+        ffmpeg.input(video_source)
+        .output("null", format="null")
+        .run(capture_stdout=True, capture_stderr=True)
+    )
+    error_output = str(error_output)  # type: ignore
+
+    pattern = r"frame=\s*(\d+).*?time=(\d{2}:\d{2}:\d{2}\.\d{2})"
+    frames, duration_str = re.findall(pattern, error_output, re.DOTALL)[-1]
+
+    hours, minutes, seconds = duration_str.split(":")
+    seconds, milliseconds = seconds.split(".")
+    duration = timedelta(
+        hours=int(hours),
+        minutes=int(minutes),
+        seconds=int(seconds),
+        milliseconds=int(milliseconds),
+    ).total_seconds()
+
+    return Metadata(
+        fps=Fraction(int(frames) / duration),
+        duration=duration,
+        audio="Audio:" in error_output,
+    )
+
+
+def get_metadata(video_source: str, expect_audio: bool = False) -> Metadata:
+    for metadata_method in [direct_ffprobe, download_and_ffprobe, metadata_via_ffmpeg]:
+        try:
+            metadata = metadata_method(video_source)
+            if not metadata.audio and expect_audio:
+                typer.echo(f"Audio missing in {video_source}", err=True)
+            return metadata
+        except Exception as e:
+            typer.echo(
+                f"Failed to get metadata, will try another method, error: {e}", err=True
+            )
+    raise ValueError("No metadata found")
 
 
 def render(
