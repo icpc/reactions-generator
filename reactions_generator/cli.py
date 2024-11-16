@@ -95,11 +95,11 @@ def metadata_via_ffmpeg(video_source: str):
     )
     error_output = str(error_output)  # type: ignore
 
-    pattern = r"frame=\s*(\d+).*?time=(\d{2}:\d{2}:\d{2}\.\d{2})"
-    frames, duration_str = re.findall(pattern, error_output, re.DOTALL)[-1]
+    pattern = r"frame=\s*(\d+).*?time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})"
+    frames, hours, minutes, seconds, milliseconds = re.findall(
+        pattern, error_output, re.DOTALL
+    )[-1]
 
-    hours, minutes, seconds = duration_str.split(":")
-    seconds, milliseconds = seconds.split(".")
     duration = timedelta(
         hours=int(hours),
         minutes=int(minutes),
