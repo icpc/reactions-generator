@@ -121,11 +121,9 @@ def get_metadata(video_source: str, expect_audio: bool = False) -> Metadata:
             if not metadata.audio and expect_audio:
                 typer.echo(f"Audio missing in {video_source}", err=True)
             return metadata
-        except Exception as e:
-            typer.echo(
-                f"Failed to get metadata, will try another method, error: {e}", err=True
-            )
-    raise ValueError("No metadata found")
+        except Exception as _:
+            continue
+    raise ValueError(f"No metadata found for {video_source}")
 
 
 def render(
