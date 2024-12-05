@@ -15,6 +15,7 @@ typer = "^0.12.5"
 numpy = "^2.1.1"
 cairosvg = "^2.7.1"
 typed-ffmpeg = "^2.1.0"
+pycairo = "^1.27.0"     # Here to provide a binary wheel for cairosvg
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.1.1"
