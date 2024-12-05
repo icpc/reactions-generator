@@ -259,6 +259,7 @@ def render_reaction(
     vcodec: str = Defaults.vcodec,
     acodec: str = Defaults.acodec,
     print_progress: bool = True,
+    sound: bool = Defaults.sound,
 ):
     """Render reaction as a video file."""
     metadata = get_metadata(webcam_source, expect_audio=True)
@@ -329,13 +330,14 @@ def render_reaction(
         .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
         .overlay(screen, x=screen_position[0], y=screen_position[1])
     )
+
     audio = (
         ffmpeg.filters.amix(
             webcam_full.audio,
             action_sound,
             duration="longest",
         )
-        if metadata.audio
+        if metadata.audio and sound
         else action_sound
     )
 
@@ -371,6 +373,7 @@ def render_horizontal_reaction(
     vcodec: str = Defaults.vcodec,
     acodec: str = Defaults.acodec,
     print_progress: bool = True,
+    sound: bool = Defaults.sound,
 ):
     """Render reaction as a video file."""
     metadata = get_metadata(webcam_source, expect_audio=True)
@@ -431,13 +434,14 @@ def render_horizontal_reaction(
         x=width - card_creator.width - margin,
         y=height - card_creator.height - margin,
     )
+
     audio = (
         ffmpeg.filters.amix(
             webcam_full.audio,
             action_sound,
             duration="longest",
         )
-        if metadata.audio
+        if metadata.audio and sound
         else action_sound
     )
 
@@ -466,6 +470,7 @@ def build_submission(
     vertical: bool = True,
     print_progress: bool = True,
     overwrite: bool = False,
+    sound: bool = Defaults.sound,
 ):
     """Render reaction as a video file."""
     output_path = os.path.join(output_directory, f"{id}.mp4")
@@ -518,6 +523,7 @@ def build_submission(
             print_progress=print_progress,
             vcodec=vcodec,
             acodec=acodec,
+            sound=sound,
         )
     else:
         render_horizontal_reaction(
@@ -539,6 +545,7 @@ def build_submission(
             print_progress=print_progress,
             vcodec=vcodec,
             acodec=acodec,
+            sound=sound,
         )
 
 
@@ -568,6 +575,7 @@ def continuous_build_submission(
     vertical: bool = True,
     total_workers: int = 1,
     worker_id: int = 0,
+    sound: bool = Defaults.sound,
 ):
     """Render reaction as a video file."""
     os.makedirs(output_directory, exist_ok=True)
@@ -592,6 +600,7 @@ def continuous_build_submission(
                     vcodec=vcodec,
                     acodec=acodec,
                     vertical=vertical,
+                    sound=sound,
                 )
             except ffmpeg.exceptions.FFMpegExecuteError as e:
                 log_error(

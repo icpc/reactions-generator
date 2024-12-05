@@ -19,4 +19,5 @@ class Defaults:
     vcodec = "libx264"
     acodec = "aac"
     output_directory = "out"
+    sound = True
     output_path = f"{output_directory}/output.mp4"
