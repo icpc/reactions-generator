@@ -101,7 +101,7 @@ def download_and_ffprobe(video_source: str) -> Metadata:
 def metadata_via_ffmpeg(video_source: str):
     _, error_output = (
         ffmpeg.input(video_source)
-        .output(filename="null", format="null")
+        .output(filename="null", f="null")
         .run(capture_stderr=True)
     )
 
