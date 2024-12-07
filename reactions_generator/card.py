@@ -18,8 +18,8 @@ from reactions_generator.text_layout import (
     auto_resize_text,
 )
 from reactions_generator.fonts import (
-    load_helvetica,
-    load_helvetica_bold,
+    load_regular,
+    load_bold,
     load_monspaced,
 )
 
@@ -33,7 +33,7 @@ def load_font(font: ImageFont.FreeTypeFont, size: int) -> ImageFont.FreeTypeFont
 def render_place(current_rank: int) -> Image.Image:
     padding = 16
     text = f"{current_rank}{get_ordinal(current_rank)} place"
-    font = load_helvetica(40)
+    font = load_regular(40)
     (_, _, text_width, text_height) = font.getbbox(text)
     image = init_transparent_image(
         (math.ceil(text_width + padding * 2), math.ceil(text_height + padding * 2))
@@ -220,7 +220,7 @@ class Card:
             auto_resize_text(
                 self.title,
                 dimensions(title_box),
-                load_helvetica_bold(10),
+                load_bold(10),
                 allow_multiline=True,
                 allow_compression=True,
                 align_center=False,
@@ -232,7 +232,7 @@ class Card:
             auto_resize_text(
                 f"{self.subtitle} {self.hashtag}",
                 dimensions(subtitle_box),
-                load_helvetica(10),
+                load_regular(10),
                 allow_multiline=False,
                 allow_compression=True,
                 align_center=False,
@@ -245,7 +245,7 @@ class Card:
             auto_resize_text(
                 self.task,
                 dimensions(task_box),
-                load_helvetica_bold(10),
+                load_bold(10),
                 allow_multiline=False,
                 allow_compression=False,
                 align_center=True,

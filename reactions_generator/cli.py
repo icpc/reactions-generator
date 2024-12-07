@@ -9,6 +9,7 @@ from datetime import timedelta
 from io import BytesIO
 from fractions import Fraction
 from typing import Any, NamedTuple
+import zipfile
 
 import typer
 import numpy as np
@@ -610,6 +611,27 @@ def continuous_build_submission(
                 )
             except Exception as e:
                 log_error(str(e), id=id, output_directory=output_directory)
+
+
+@app.command("download-fonts", help="Download Inter font and Inter Bold.")
+def download_fonts(
+    url: str = "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip",
+    paths: list[str] = [
+        "extras/ttf/InterDisplay-Medium.ttf",
+        "extras/ttf/InterDisplay-Bold.ttf",
+    ],
+):
+    response = requests.get(url)
+    if response.status_code != 200:
+        raise ValueError(f"Failed to download fonts from {url}")
+
+    with zipfile.ZipFile(BytesIO(response.content)) as zip_ref:
+        for path in paths:
+            font_name = os.path.basename(path)
+            with zip_ref.open(path) as source:
+                with open(font_name, "wb") as target:
+                    target.write(source.read())
+    typer.echo(f"Downloaded fonts: {', '.join(os.path.basename(p) for p in paths)}")
 
 
 def main():

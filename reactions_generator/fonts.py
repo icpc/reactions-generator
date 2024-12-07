@@ -15,16 +15,21 @@ def load_font(fonts: tuple[str]) -> ImageFont.FreeTypeFont:
 
 
 @functools.cache
-def load_helvetica(size: int) -> ImageFont.FreeTypeFont:
-    return load_font(("Helvetica", "helvetica.ttf", "./helvetica.ttf")).font_variant(
-        size=size
-    )
+def load_regular(size: int) -> ImageFont.FreeTypeFont:
+    return load_font(
+        ("Helvetica", "helvetica.ttf", "./helvetica.ttf", "./InterDisplay-Medium.ttf")
+    ).font_variant(size=size)
 
 
 @functools.cache
-def load_helvetica_bold(size: int) -> ImageFont.FreeTypeFont:
+def load_bold(size: int) -> ImageFont.FreeTypeFont:
     return load_font(
-        ("Helvetica Bold", "helvetica-bold.ttf", "./helvetica_bold.ttf")
+        (
+            "Helvetica Bold",
+            "helvetica-bold.ttf",
+            "./helvetica_bold.ttf",
+            "./InterDisplay-Bold.ttf",
+        )
     ).font_variant(size=size)
 
 
