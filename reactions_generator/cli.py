@@ -483,7 +483,7 @@ def build_submission(
                     f"File {output_path} already exists. Use --overwrite to replace."
                 )
             return
-    response = requests.get(f"{url}/api/overlay/externalRun/{id}")
+    response = requests.get(f"{url}/reactions/fullRuns/{id}")
     data = response.json()
     title = data["team"].get("displayName", "")
     subtitle = data["team"]["customFields"].get("clicsTeamFullName", "")
