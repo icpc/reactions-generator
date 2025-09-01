@@ -15,7 +15,6 @@ import numpy as np
 from tqdm import tqdm
 
 from PIL import Image, ImageColor
-import cairosvg  # type: ignore
 import ffmpeg
 import ffmpeg.types
 
@@ -34,12 +33,6 @@ app = typer.Typer(no_args_is_help=True)
 def load_image_or_color(source: str, dimensions: tuple[int, int]) -> Image.Image:
     if source.startswith("#"):
         return Image.new("RGBA", dimensions, color=ImageColor.getrgb(source))
-
-    if source.lower().endswith(".svg"):
-        png_image = typing.cast(
-            bytes, cairosvg.svg2png(url=source, output_width=dimensions[0])
-        )
-        return Image.open(BytesIO(png_image))
 
     if source.lower().startswith(("http://", "https://")):
         response = requests.get(source)
