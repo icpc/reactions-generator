@@ -42,7 +42,6 @@ COPY --from=builder /app/.venv /app/.venv
 
 # Copy runtime assets used by the app at execution time
 COPY example ./example
-COPY helvetica.ttf helvetica_bold.ttf InterDisplay-Bold.ttf InterDisplay-Medium.ttf ./
 
 # Default entrypoint to the CLI defined in pyproject [tool.poetry.scripts]
 ENTRYPOINT ["main"]

@@ -3,21 +3,10 @@ version: "3.9"
 services:
   reactions:
     # Replace <owner>/<repo> if running locally before publishing
-    image: ghcr.io/${GH_REPOSITORY:-<owner>/<repo>}:latest
+    image: ghcr.io/icpc/reactions-generator:latest
     container_name: reactions-generator
-    working_dir: /app
     volumes:
       - ./out:/app/out
-      # Optionally mount local examples if you want to use your own assets
-      # - ./example:/app/example:ro
-    # Example commands:
-    # Generate a simple card using defaults
+      - ./fonts:/app/fonts:ro
     command: ["card", "--output-path", "out/output.mp4"]
-    # Or run the full reaction renderer (requires video/audio inputs)
-    # command: [
-    #   "reaction",
-    #   "--webcam-source", "example/reaction.mp4",
-    #   "--screen-source", "example/screen.mp4",
-    #   "--output-path", "out/output.mp4"
-    # ]
 
