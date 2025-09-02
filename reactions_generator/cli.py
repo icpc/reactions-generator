@@ -493,8 +493,8 @@ def build_submission(
     rank_before = data["team"]["rankBefore"]
     rank_after = data["team"]["rankAfter"]
     logo_source = data["team"]["organization"]["logo"]["url"]
-    webcam_source = data["reactionVideos"][0]["url"]
-    screen_source = data["reactionVideos"][1]["url"]
+    webcam_source = data["reactionVideos"][1]["url"]
+    screen_source = data["reactionVideos"][0]["url"]
     if vertical:
         render_reaction(
             title=title,
