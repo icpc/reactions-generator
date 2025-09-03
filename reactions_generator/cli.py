@@ -574,7 +574,7 @@ def continuous_build_submission(
     os.makedirs(output_directory, exist_ok=True)
 
     while True:
-        response = requests.get(f"{url}/api/overlay/runs")
+        response = requests.get(f"{url}/reactions/runs.json")
         ids = [str(run["id"]) for run in response.json() if not run["isHidden"]]
 
         filtered = [id for id in ids if stable_hash(id) % total_workers == worker_id]
