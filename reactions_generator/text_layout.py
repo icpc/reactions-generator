@@ -78,6 +78,10 @@ def auto_resize_text(
     align_center: bool,
     max_size: int = 150,
 ) -> Image.Image:
+    # For some reason the small text does not look pretty when rendered below the card widget.
+    # I think this is mainly caused by the low bitrate in ffmpeg, but just to be sure, I've tried the following tricks:
+    # 1. Rendering at 2x size and scaling down.
+    # 2. Softening the text with a slight blur filter.
     width, height = map(math.floor, dimensions)
     max_horizontal_compression = 1.5 if allow_compression else 1
     measure_size = 10
@@ -127,4 +131,4 @@ def auto_resize_text(
             (0, 0, image.width, image.height),
             font=font.font_variant(size=font_size),
         )
-    return image.resize((width, height))
+    return image.resize((width, height), Image.Resampling.LANCZOS)
