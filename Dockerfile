@@ -26,6 +26,7 @@ RUN poetry config virtualenvs.create false \
 COPY reactions_generator ./reactions_generator
 COPY README.md ./
 COPY example ./example
+COPY fonts ./fonts
 RUN poetry install --only main
 
 # Default entrypoint to the CLI defined in pyproject [tool.poetry.scripts]

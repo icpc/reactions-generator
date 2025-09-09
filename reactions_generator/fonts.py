@@ -17,24 +17,19 @@ def load_font(fonts: tuple[str]) -> ImageFont.FreeTypeFont:
 @functools.cache
 def load_regular(size: int) -> ImageFont.FreeTypeFont:
     return load_font(
-        ("Helvetica", "helvetica.ttf", "./helvetica.ttf", "./fonts/helvetica.ttf")
+        ("./fonts/custom/helvetica.ttf", "./fonts/nimbus/NimbusSans-Regular.ttf")
     ).font_variant(size=size)
 
 
 @functools.cache
 def load_bold(size: int) -> ImageFont.FreeTypeFont:
     return load_font(
-        (
-            "Helvetica Bold",
-            "helvetica-bold.ttf",
-            "./helvetica_bold.ttf",
-            "./fonts/helvetica_bold.ttf",
-        )
+        ("./fonts/custom/helvetica_bold.ttf", "./fonts/nimbus/NimbusSans-Bold.ttf")
     ).font_variant(size=size)
 
 
 @functools.cache
 def load_monspaced(size: int) -> ImageFont.FreeTypeFont:
     return load_font(
-        ("Courier", "cour.ttf", "./cour.ttf", "./fonts/cour.ttf")
+        ("./fonts/custom/cour.ttf", "./fonts/nimbus/NimbusMonoPS-Regular.ttf")
     ).font_variant(size=size)
