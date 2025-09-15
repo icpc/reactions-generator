@@ -2,11 +2,6 @@
 
 ## How to run
 
-Install cairo (for svg conversion):
-```
-sudo apt-get install libcairo2-dev
-```
-
 ```
 poetry install
 poetry run main --help
