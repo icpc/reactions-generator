@@ -68,8 +68,14 @@ def direct_ffprobe(video_source: str) -> Metadata:
     probe = next(
         (stream for stream in streams if stream["codec_type"] == "video"),
     )
+
+    try:
+        fps = Fraction(probe["r_frame_rate"])
+    except Exception:
+        fps = Fraction(probe["avg_frame_rate"])
+
     return Metadata(
-        fps=Fraction(probe["avg_frame_rate"]),
+        fps=fps,
         duration=float(probe["duration"]),
         audio=any(stream["codec_type"] == "audio" for stream in streams),
     )
