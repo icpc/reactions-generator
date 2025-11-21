@@ -259,6 +259,10 @@ def render_reaction(
     acodec: str = Defaults.acodec,
     print_progress: bool = True,
     sound: bool = Defaults.sound,
+    background_position = Defaults.background_position,
+    card_position =  Defaults.card_position,
+    webcam_position = Defaults.webcam_position,
+    screen_position = Defaults.screen_position
 ):
     """Render reaction as a video file."""
     metadata = get_metadata(webcam_source, expect_audio=True)
@@ -286,157 +290,40 @@ def render_reaction(
         logo=logo,
         animation_start=animation_start,
         fps=fps,
-        width=1000,
-        height=306,
+        width=card_position[2],
+        height=card_position[3],
     )
+    background = (ffmpeg
+             .input(background_source)
+             .scale(w=background_position[2], h=background_position[3])
+    )
+    webcam = (ffmpeg
+             .input(webcam_source)
+             .video.scale(w=webcam_position[2], h=webcam_position[3])
+             .setpts(expr="PTS-STARTPTS")
+    )
+    screen = (ffmpeg
+             .input(screen_source)
+             .video.scale(w=screen_position[2], h=screen_position[3])
+             .setpts(expr="PTS-STARTPTS")
+    )
+    card = pipe_card_input(card_position[2], card_position[3], fps)
 
-    width = 1080
-    height = 1920
-
-    webcam_full = ffmpeg.input(webcam_source)
-    webcam = webcam_full.video.scale(w=card_creator.width, h=-1).setpts(
-        expr="PTS-STARTPTS"
-    )
-    screen = (
-        ffmpeg.input(screen_source)
-        .video.scale(w=card_creator.width, h=-1)
-        .setpts(expr="PTS-STARTPTS")
-    )
-    background = ffmpeg.input(background_source).scale(w=width, h=height)
-    card = pipe_card_input(card_creator.width, card_creator.height, fps)
-
-    gap = 50
-    card_position = center_anchor((0, 0, width, height), dimensions=card_creator.size)
-    content_size = (card_creator.width, card_creator.width * 9 / 16)
-    webcam_position = place_above(
-        card_position,
-        dimensins=content_size,
-        gap=gap,
-    )
-    screen_position = place_below(
-        card_position,
-        dimensins=content_size,
-        gap=gap,
-    )
 
     action_sound = ffmpeg.input(
         success_audio_path if success else fail_audio_path
     ).adelay(delays=animation_start / fps * 1000, all=True)
+
     video = (
-        background.overlay(
-            card, x=card_position[0], y=card_position[1], eof_action="repeat"
-        )
+        background
         .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
         .overlay(screen, x=screen_position[0], y=screen_position[1])
+        .overlay(card, x=card_position[0], y=card_position[1], eof_action="repeat")
     )
 
     audio = (
         ffmpeg.filters.amix(
-            webcam_full.audio,
-            action_sound,
-            duration="longest",
-        )
-        if metadata.audio and sound
-        else action_sound
-    )
-
-    render(
-        [audio, video],
-        card=card_creator,
-        last_frame=min(last_frame, animation_start + 10),
-        output_path=output_path,
-        fps=fps,
-        print_progress=print_progress,
-        vcodec=vcodec,
-        acodec=acodec,
-    )
-
-
-@app.command("reaction-h", help="Render a manual horizontal reaction.")
-def render_horizontal_reaction(
-    title: str = Defaults.title,
-    subtitle: str = Defaults.subtitle,
-    hashtag: str = Defaults.hashtag,
-    task: str = Defaults.task,
-    time: float = Defaults.time,
-    outcome: str = Defaults.outcome,
-    success: bool = Defaults.success,
-    rank_before: int = Defaults.rank_before,
-    rank_after: int = Defaults.rank_after,
-    logo_source: str = Defaults.logo_source,
-    webcam_source: str = Defaults.webcam_source,
-    screen_source: str = Defaults.screen_source,
-    success_audio_path: str = Defaults.success_audio_path,
-    fail_audio_path: str = Defaults.fail_audio_path,
-    output_path: str = Defaults.output_path,
-    vcodec: str = Defaults.vcodec,
-    acodec: str = Defaults.acodec,
-    print_progress: bool = True,
-    sound: bool = Defaults.sound,
-):
-    """Render reaction as a video file."""
-    metadata = get_metadata(webcam_source, expect_audio=True)
-    fps = float(metadata.fps)
-    last_frame = math.floor(metadata.duration * fps)
-    animation_start = max(0, round(last_frame - 30 * fps))
-
-    try:
-        get_metadata(screen_source)
-    except Exception as e:
-        typer.echo(f"Failed to get metadata for screen source: {e}")
-        screen_source = f"{task}.png"
-
-    width = 1920
-    height = 1080
-
-    screen_width = 640
-    screen_height = screen_width * 9 // 16
-    margin = 16
-
-    logo = load_image_or_color(logo_source, dimensions=(152, 152))
-    card_creator = Card(
-        title=title,
-        subtitle=subtitle,
-        hashtag=hashtag,
-        task=task,
-        time=time,
-        outcome=outcome,
-        success=success,
-        rank_before=rank_before,
-        rank_after=rank_after,
-        logo=logo,
-        animation_start=animation_start,
-        fps=fps,
-        width=1000,
-        height=300,
-    )
-
-    webcam_full = ffmpeg.input(webcam_source)
-    webcam = webcam_full.video.scale(w=width, h=height).setpts(expr="PTS-STARTPTS")
-    screen = (
-        ffmpeg.input(screen_source)
-        .video.scale(w=screen_width, h=-1)
-        .setpts(expr="PTS-STARTPTS")
-    )
-    card = pipe_card_input(card_creator.width, card_creator.height, fps)
-
-    action_sound = ffmpeg.input(
-        success_audio_path if success else fail_audio_path
-    ).adelay(delays=animation_start / fps * 1000, all=True)
-
-    video = webcam.overlay(
-        screen,
-        x=margin,
-        y=height - screen_height - margin,
-    ).overlay(
-        card,
-        x=width - card_creator.width - margin,
-        y=height - card_creator.height - margin,
-    )
-
-    audio = (
-        ffmpeg.filters.amix(
-            webcam_full.audio,
+            ffmpeg.input(webcam_source).audio,
             action_sound,
             duration="longest",
         )
@@ -455,12 +342,10 @@ def render_horizontal_reaction(
         acodec=acodec,
     )
 
-
 @app.command("single", help="Render one submission from the overlayer.")
 def build_submission(
     url: str,
     id: str,
-    background_source: str = Defaults.background_source,
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
     output_directory: str = Defaults.output_directory,
@@ -499,53 +384,55 @@ def build_submission(
     rank_before = data["team"]["rankBefore"]
     rank_after = data["team"]["rankAfter"]
     logo_source = data["team"]["organization"]["logo"]["url"]
-    webcam_source = data["reactionVideos"][1]["url"]
-    screen_source = data["reactionVideos"][0]["url"]
+    webcam_source = ""
+    screen_source = ""
+    for source in data["reactionVideos"]:
+    	uri = source["url"].rsplit(".", 1)[0]
+    	if uri[-6:] == "webcam":
+    	    webcam_source = source["url"]
+    	if uri[-7:] == "desktop":
+    	    screen_source = source["url"]
+
+    background_source = Defaults.background_source_h
+    background_position = Defaults.background_position_h
+    card_position =  Defaults.card_position_h
+    webcam_position = Defaults.webcam_position_h
+    screen_position = Defaults.screen_position_h
+
+
     if vertical:
-        render_reaction(
-            title=title,
-            subtitle=subtitle,
-            hashtag=hashtag,
-            task=task,
-            time=time,
-            outcome=outcome,
-            success=success,
-            rank_before=rank_before,
-            rank_after=rank_after,
-            logo_source=logo_source,
-            webcam_source=webcam_source,
-            screen_source=screen_source,
-            background_source=background_source,
-            success_audio_path=success_audio_path,
-            fail_audio_path=fail_audio_path,
-            output_path=output_path,
-            print_progress=print_progress,
-            vcodec=vcodec,
-            acodec=acodec,
-            sound=sound,
-        )
-    else:
-        render_horizontal_reaction(
-            title=title,
-            subtitle=subtitle,
-            hashtag=hashtag,
-            task=task,
-            time=time,
-            outcome=outcome,
-            success=success,
-            rank_before=rank_before,
-            rank_after=rank_after,
-            logo_source=logo_source,
-            webcam_source=webcam_source,
-            screen_source=screen_source,
-            success_audio_path=success_audio_path,
-            fail_audio_path=fail_audio_path,
-            output_path=output_path,
-            print_progress=print_progress,
-            vcodec=vcodec,
-            acodec=acodec,
-            sound=sound,
-        )
+    	background_source = Defaults.background_source
+    	background_position = Defaults.background_position
+    	card_position =  Defaults.card_position
+    	webcam_position = Defaults.webcam_position
+    	screen_position = Defaults.screen_position
+
+    render_reaction(
+        title=title,
+        subtitle=subtitle,
+        hashtag=hashtag,
+        task=task,
+        time=time,
+        outcome=outcome,
+        success=success,
+        rank_before=rank_before,
+        rank_after=rank_after,
+        logo_source=logo_source,
+        webcam_source=webcam_source,
+        screen_source=screen_source,
+        background_source=background_source,
+        success_audio_path=success_audio_path,
+        fail_audio_path=fail_audio_path,
+        output_path=output_path,
+        print_progress=print_progress,
+        vcodec=vcodec,
+        acodec=acodec,
+        sound=sound,
+    	background_position = background_position,
+    	card_position =  card_position,
+    	webcam_position = webcam_position,
+    	screen_position = screen_position,
+    )
 
 
 def log_error(error_string: str, id: str, output_directory: str):
