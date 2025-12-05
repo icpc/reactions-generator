@@ -8,17 +8,17 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.12"
-requests = "^2.32.3"
-pillow = "^10.4.0"
-tqdm = "^4.66.5"
-typer = "^0.12.5"
-numpy = "^2.1.1"
-typed-ffmpeg = "^2.1.0"
+requests = "^2.32.5"
+pillow = "^12.0.0"
+tqdm = "^4.67.1"
+typer = "^0.20.0"
+numpy = "^2.3.5"
+typed-ffmpeg = "^3.8.0"
 
 [tool.poetry.group.dev.dependencies]
 jupyter = "^1.1.1"
-ruff = "^0.6.3"
-pyright = "^1.1.378"
+ruff = "^0.14.8"
+pyright = "^1.1.407"
 
 [tool.poetry.scripts]
 main = "reactions_generator.cli:main"
