@@ -486,6 +486,7 @@ def continuous_build_submission(
                     acodec=acodec,
                     vertical=vertical,
                     sound=sound,
+                    hwaccel=hwaccel,
                 )
             except ffmpeg.exceptions.FFMpegExecuteError as e:
                 log_error(
