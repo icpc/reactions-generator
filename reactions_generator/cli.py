@@ -5,6 +5,7 @@ import requests
 import atexit
 import hashlib
 import re
+import subprocess
 from datetime import timedelta
 from io import BytesIO
 from fractions import Fraction
@@ -146,7 +147,7 @@ def render(
     output_dirname = os.path.dirname(output_path)
     tmp_output = os.path.join(output_dirname, f"tmp_{output_basename}")
     os.makedirs(output_dirname, exist_ok=True)
-    process = (
+    process: subprocess.Popen[bytes] = (
         ffmpeg.output(
             *ffmpeg_input,
             filename=tmp_output,
@@ -154,8 +155,8 @@ def render(
             acodec=typing.cast(ffmpeg.types.String, acodec),
             r=fps,
             pix_fmt="yuv420p",
-            loglevel="info" if print_progress else "quiet",
         )
+        .global_args(loglevel="info" if print_progress else "quiet")
         .overwrite_output()
         .run_async(pipe_stdin=True, auto_fix=False)
     )
@@ -254,10 +255,13 @@ def render_reaction(
     acodec: str = Defaults.acodec,
     print_progress: bool = True,
     sound: bool = Defaults.sound,
-    background_position: tuple[float,float,float,float] = Defaults.background_position,
-    card_position: tuple[int,int,int,int] = Defaults.card_position,
-    webcam_position: tuple[float,float,float,float] = Defaults.webcam_position,
-    screen_position: tuple[float,float,float,float] = Defaults.screen_position
+    background_position: tuple[
+        float, float, float, float
+    ] = Defaults.background_position,
+    card_position: tuple[int, int, int, int] = Defaults.card_position,
+    webcam_position: tuple[float, float, float, float] = Defaults.webcam_position,
+    screen_position: tuple[float, float, float, float] = Defaults.screen_position,
+    hwaccel: str | None = Defaults.hwaccel,
 ):
     """Render reaction as a video file."""
     metadata = get_metadata(webcam_source, expect_audio=True)
@@ -288,37 +292,35 @@ def render_reaction(
         width=card_position[2],
         height=card_position[3],
     )
-    background = (ffmpeg
-             .input(background_source)
-             .scale(w=background_position[2], h=background_position[3])
+
+    background = ffmpeg.input(background_source, hwaccel=hwaccel).scale(
+        w=background_position[2], h=background_position[3]
     )
-    webcam = (ffmpeg
-             .input(webcam_source)
-             .video.scale(w=webcam_position[2], h=webcam_position[3])
-             .setpts(expr="PTS-STARTPTS")
+    webcam = (
+        ffmpeg.input(webcam_source, hwaccel=hwaccel)
+        .video.scale(w=webcam_position[2], h=webcam_position[3])
+        .setpts(expr="PTS-STARTPTS")
     )
-    screen = (ffmpeg
-             .input(screen_source)
-             .video.scale(w=screen_position[2], h=screen_position[3])
-             .setpts(expr="PTS-STARTPTS")
+    screen = (
+        ffmpeg.input(screen_source, hwaccel=hwaccel)
+        .video.scale(w=screen_position[2], h=screen_position[3])
+        .setpts(expr="PTS-STARTPTS")
     )
     card = pipe_card_input(card_position[2], card_position[3], fps)
-
 
     action_sound = ffmpeg.input(
         success_audio_path if success else fail_audio_path
     ).adelay(delays=animation_start / fps * 1000, all=True)
 
     video = (
-        background
-        .overlay(webcam, x=webcam_position[0], y=webcam_position[1])
+        background.overlay(webcam, x=webcam_position[0], y=webcam_position[1])
         .overlay(screen, x=screen_position[0], y=screen_position[1])
         .overlay(card, x=card_position[0], y=card_position[1], eof_action="repeat")
     )
 
     audio = (
         ffmpeg.filters.amix(
-            ffmpeg.input(webcam_source).audio,
+            ffmpeg.input(webcam_source, hwaccel=hwaccel).audio,
             action_sound,
             duration="longest",
         )
@@ -337,6 +339,7 @@ def render_reaction(
         acodec=acodec,
     )
 
+
 @app.command("single", help="Render one submission from the overlayer.")
 def build_submission(
     url: str,
@@ -350,6 +353,7 @@ def build_submission(
     print_progress: bool = True,
     overwrite: bool = False,
     sound: bool = Defaults.sound,
+    hwaccel: str | None = Defaults.hwaccel,
 ):
     """Render reaction as a video file."""
     output_path = os.path.join(output_directory, f"{id}.mp4")
@@ -390,10 +394,9 @@ def build_submission(
 
     background_source = Defaults.background_source_h
     background_position = Defaults.background_position_h
-    card_position =  Defaults.card_position_h
+    card_position = Defaults.card_position_h
     webcam_position = Defaults.webcam_position_h
     screen_position = Defaults.screen_position_h
-
 
     if vertical:
         background_source = Defaults.background_source
@@ -427,6 +430,7 @@ def build_submission(
         card_position=card_position,
         webcam_position=webcam_position,
         screen_position=screen_position,
+        hwaccel=hwaccel,
     )
 
 
@@ -456,6 +460,7 @@ def continuous_build_submission(
     total_workers: int = 1,
     worker_id: int = 0,
     sound: bool = Defaults.sound,
+    hwaccel: str | None = Defaults.hwaccel,
 ):
     """Render reaction as a video file."""
     os.makedirs(output_directory, exist_ok=True)

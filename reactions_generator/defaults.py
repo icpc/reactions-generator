@@ -35,6 +35,7 @@ class Defaults:
     duration_seconds = 60
     vcodec = "libx264"
     acodec = "aac"
+    hwaccel = None
     output_directory = "out"
     sound = True
     output_path = f"{output_directory}/output.mp4"
