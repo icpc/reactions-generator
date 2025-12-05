@@ -21,11 +21,6 @@ import ffmpeg.types
 from reactions_generator.defaults import Defaults
 from reactions_generator.card import Card
 import tempfile
-from reactions_generator.utils import (
-    center_anchor,
-    place_above,
-    place_below,
-)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -259,10 +254,10 @@ def render_reaction(
     acodec: str = Defaults.acodec,
     print_progress: bool = True,
     sound: bool = Defaults.sound,
-    background_position = Defaults.background_position,
-    card_position =  Defaults.card_position,
-    webcam_position = Defaults.webcam_position,
-    screen_position = Defaults.screen_position
+    background_position: tuple[float,float,float,float] = Defaults.background_position,
+    card_position: tuple[int,int,int,int] = Defaults.card_position,
+    webcam_position: tuple[float,float,float,float] = Defaults.webcam_position,
+    screen_position: tuple[float,float,float,float] = Defaults.screen_position
 ):
     """Render reaction as a video file."""
     metadata = get_metadata(webcam_source, expect_audio=True)
@@ -387,11 +382,11 @@ def build_submission(
     webcam_source = ""
     screen_source = ""
     for source in data["reactionVideos"]:
-    	uri = source["url"].rsplit(".", 1)[0]
-    	if uri[-6:] == "webcam":
-    	    webcam_source = source["url"]
-    	if uri[-7:] == "desktop":
-    	    screen_source = source["url"]
+        uri = source["url"].rsplit(".", 1)[0]
+        if uri[-6:] == "webcam":
+            webcam_source = source["url"]
+        if uri[-7:] == "desktop":
+            screen_source = source["url"]
 
     background_source = Defaults.background_source_h
     background_position = Defaults.background_position_h
@@ -401,11 +396,11 @@ def build_submission(
 
 
     if vertical:
-    	background_source = Defaults.background_source
-    	background_position = Defaults.background_position
-    	card_position =  Defaults.card_position
-    	webcam_position = Defaults.webcam_position
-    	screen_position = Defaults.screen_position
+        background_source = Defaults.background_source
+        background_position = Defaults.background_position
+        card_position = Defaults.card_position
+        webcam_position = Defaults.webcam_position
+        screen_position = Defaults.screen_position
 
     render_reaction(
         title=title,
@@ -428,10 +423,10 @@ def build_submission(
         vcodec=vcodec,
         acodec=acodec,
         sound=sound,
-    	background_position = background_position,
-    	card_position =  card_position,
-    	webcam_position = webcam_position,
-    	screen_position = screen_position,
+        background_position=background_position,
+        card_position=card_position,
+        webcam_position=webcam_position,
+        screen_position=screen_position,
     )
 
 
@@ -452,7 +447,6 @@ def stable_hash(input_string: str):
 @app.command("all", help="Continuously render all submissions from the overlayer.")
 def continuous_build_submission(
     url: str,
-    background_source: str = Defaults.background_source,
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
     output_directory: str = Defaults.output_directory,
@@ -478,7 +472,6 @@ def continuous_build_submission(
                 build_submission(
                     id=id,
                     url=url,
-                    background_source=background_source,
                     success_audio_path=success_audio_path,
                     fail_audio_path=fail_audio_path,
                     output_directory=output_directory,
