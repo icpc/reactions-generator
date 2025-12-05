@@ -16,7 +16,6 @@ numpy = "^2.3.5"
 typed-ffmpeg = "^3.8.0"
 
 [tool.poetry.group.dev.dependencies]
-jupyter = "^1.1.1"
 ruff = "^0.14.8"
 pyright = "^1.1.407"
 
