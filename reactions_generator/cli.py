@@ -46,6 +46,7 @@ def pipe_card_input(width: int, height: int, fps: float) -> ffmpeg.VideoStream:
         pix_fmt="rgba",
         s=f"{width}x{height}",
         r=fps,
+        thread_queue_size=512,
     ).video
 
 
@@ -264,6 +265,11 @@ def render_reaction(
     hwaccel: str | None = Defaults.hwaccel,
 ):
     """Render reaction as a video file."""
+    use_cuda_filters = hwaccel == "cuda"
+    input_options: dict[str, Any] = {"thread_queue_size": 512}
+    if hwaccel is not None:
+        input_options["hwaccel"] = hwaccel
+
     metadata = get_metadata(webcam_source, expect_audio=True)
     fps = float(metadata.fps)
     last_frame = math.floor(metadata.duration * fps)
@@ -293,34 +299,72 @@ def render_reaction(
         height=card_position[3],
     )
 
-    background = ffmpeg.input(background_source, hwaccel=hwaccel).scale(
-        w=background_position[2], h=background_position[3]
+    def scale_stream(
+        stream: ffmpeg.VideoStream,
+        width: float,
+        height: float,
+    ) -> ffmpeg.VideoStream:
+        if use_cuda_filters:
+            gpu_stream = (
+                stream.format(pix_fmts="nv12").hwupload_cuda()
+            )
+            return gpu_stream.scale_cuda(
+                w=width,
+                h=height,
+            )
+        return stream.scale(w=width, h=height)
+
+    def overlay_stream(
+        base: ffmpeg.VideoStream,
+        overlay: ffmpeg.VideoStream,
+        **kwargs: Any,
+    ) -> ffmpeg.VideoStream:
+        if use_cuda_filters:
+            return base.overlay_cuda(overlay, **kwargs)
+        return base.overlay(overlay, **kwargs)
+
+    background = scale_stream(
+        ffmpeg.input(background_source, **input_options).video,
+        width=background_position[2],
+        height=background_position[3],
     )
-    webcam = (
-        ffmpeg.input(webcam_source, hwaccel=hwaccel)
-        .video.scale(w=webcam_position[2], h=webcam_position[3])
-        .setpts(expr="PTS-STARTPTS")
+    webcam = scale_stream(
+        ffmpeg.input(webcam_source, **input_options)
+        .video.setpts(expr="PTS-STARTPTS"),
+        width=webcam_position[2],
+        height=webcam_position[3],
     )
-    screen = (
-        ffmpeg.input(screen_source, hwaccel=hwaccel)
-        .video.scale(w=screen_position[2], h=screen_position[3])
-        .setpts(expr="PTS-STARTPTS")
+    screen = scale_stream(
+        ffmpeg.input(screen_source, **input_options)
+        .video.setpts(expr="PTS-STARTPTS"),
+        width=screen_position[2],
+        height=screen_position[3],
     )
     card = pipe_card_input(card_position[2], card_position[3], fps)
+    if use_cuda_filters:
+        card = card.format(pix_fmts="nv12").hwupload_cuda()
 
     action_sound = ffmpeg.input(
         success_audio_path if success else fail_audio_path
     ).adelay(delays=animation_start / fps * 1000, all=True)
 
-    video = (
-        background.overlay(webcam, x=webcam_position[0], y=webcam_position[1])
-        .overlay(screen, x=screen_position[0], y=screen_position[1])
-        .overlay(card, x=card_position[0], y=card_position[1], eof_action="repeat")
+    video = overlay_stream(
+        background, webcam, x=webcam_position[0], y=webcam_position[1]
     )
+    video = overlay_stream(video, screen, x=screen_position[0], y=screen_position[1])
+    video = overlay_stream(
+        video,
+        card,
+        x=card_position[0],
+        y=card_position[1],
+        eof_action="repeat",
+    )
+    if use_cuda_filters:
+        video = video.hwdownload().format(pix_fmts="nv12")
 
     audio = (
         ffmpeg.filters.amix(
-            ffmpeg.input(webcam_source, hwaccel=hwaccel).audio,
+            ffmpeg.input(webcam_source, **input_options).audio,
             action_sound,
             duration="longest",
         )
