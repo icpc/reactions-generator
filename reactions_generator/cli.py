@@ -378,8 +378,12 @@ def build_submission(
             hashtag = f"#{hashtag}"
     task = data["problem"]["letter"]
     time = data["time"]
-    outcome = data["result"]["verdict"]["shortName"]
-    success = data["result"]["verdict"]["isAccepted"]
+    if "verdict" in data["result"]:
+        outcome = data["result"]["verdict"]["shortName"]
+        success = data["result"]["verdict"]["isAccepted"]
+    else:
+        outcome = f"+{data['result']['difference']}"
+        success = data["result"]["isFirstBestTeamRun"]
     rank_before = data["team"]["rankBefore"]
     rank_after = data["team"]["rankAfter"]
     logo_source = data["team"]["organization"]["logo"]["url"]
