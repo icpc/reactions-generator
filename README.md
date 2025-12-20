@@ -1,5 +1,7 @@
 # reactions-generator
 
+See our reaction videos in action: https://news.icpc.global/reactions/
+
 ## How to run
 
 ```
