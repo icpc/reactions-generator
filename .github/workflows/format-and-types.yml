@@ -27,3 +27,6 @@ jobs:
 
       - name: Type check
         run: poetry run pyright
+
+      - name: Unit tests
+        run: poetry run python -m unittest discover -s tests

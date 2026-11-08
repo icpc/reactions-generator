@@ -4,8 +4,9 @@ from PIL import ImageFont
 
 
 @functools.cache
-def load_font(fonts: tuple[str]) -> ImageFont.FreeTypeFont:
-    exception = Exception("No font found")
+def load_font(fonts: tuple[str, ...]) -> ImageFont.FreeTypeFont:
+    """Load the first available font, preserving the custom-font preference."""
+    exception = OSError("No font candidates provided")
     for font in fonts:
         try:
             return ImageFont.truetype(font)

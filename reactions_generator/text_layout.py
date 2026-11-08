@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 from reactions_generator.colors import Colors
 from reactions_generator.utils import (
     Box,
+    Dimensions,
     center_anchor,
     init_transparent_image,
     place_grid,
@@ -14,7 +15,7 @@ from reactions_generator.utils import (
 
 def measure(
     draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, multiline: bool
-) -> tuple[float, float]:
+) -> Dimensions:
     if multiline:
         return draw.multiline_textbbox((0, 0), text, font=font)[2:]
     else:
@@ -70,7 +71,7 @@ def try_adding_endline(text: str) -> tuple[bool, str]:
 @functools.cache
 def auto_resize_text(
     text: str,
-    dimensions: tuple[float, float],
+    dimensions: Dimensions,
     font: ImageFont.FreeTypeFont,
     allow_multiline: bool,
     allow_compression: bool,
@@ -85,7 +86,7 @@ def auto_resize_text(
     max_horizontal_compression = 1.5 if allow_compression else 1
     measure_size = 10
 
-    if text == "":
+    if not text.strip():
         return init_transparent_image((width, height))
 
     multiline, text = try_adding_endline(text) if allow_multiline else (False, text)
@@ -102,12 +103,15 @@ def auto_resize_text(
     width_ratio = measure_width / measure_size
     height_ratio = measure_height / measure_size
 
-    font_size = math.floor(
-        min(
-            width / width_ratio * max_horizontal_compression,
-            height / height_ratio,
-            max_size,
-        )
+    font_size = max(
+        1,
+        math.floor(
+            min(
+                width / width_ratio * max_horizontal_compression,
+                height / height_ratio,
+                max_size,
+            )
+        ),
     )
     image = init_transparent_image(
         (

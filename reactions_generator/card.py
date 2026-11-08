@@ -1,6 +1,7 @@
 import functools
 import math
 from dataclasses import dataclass
+from typing import ClassVar
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -16,6 +17,7 @@ from reactions_generator.text_layout import (
 )
 from reactions_generator.utils import (
     Box,
+    Size,
     center_anchor,
     dimensions,
     init_transparent_image,
@@ -92,14 +94,14 @@ class Card:
     width: int
     height: int
 
-    top_padding = 48
+    top_padding: ClassVar[int] = 48
 
     @property
     def actual_card_height(self) -> int:
         return self.height - self.top_padding
 
     @property
-    def size(self) -> tuple[int, int]:
+    def size(self) -> Size:
         return (self.width, self.height)
 
     @functools.cached_property

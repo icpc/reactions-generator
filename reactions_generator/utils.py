@@ -1,49 +1,53 @@
 import math
+from typing import TypeAlias
 
 from PIL import Image, ImageDraw
 
+Size: TypeAlias = tuple[int, int]
+Dimensions: TypeAlias = tuple[float, float]
+Point: TypeAlias = tuple[int, int]
+Box: TypeAlias = tuple[float, float, float, float]
+PixelBox: TypeAlias = tuple[int, int, int, int]
 
-def init_transparent_image(dimensions: tuple[int, int]) -> Image.Image:
+
+def init_transparent_image(dimensions: Size) -> Image.Image:
     width, height = dimensions
     return Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
 
-def rounded_mask(dimensions: tuple[int, int]) -> Image.Image:
+def rounded_mask(dimensions: Size) -> Image.Image:
     mask = Image.new("1", dimensions, 0)
     draw = ImageDraw.Draw(mask)
     draw.rounded_rectangle((0, 0, mask.width, mask.height), radius=48, fill=1)
     return mask
 
 
-Box = tuple[float, float, float, float]
-
-
-def dimensions(box: Box) -> tuple[float, float]:
+def dimensions(box: Box) -> Dimensions:
     left, top, right, bottom = box
     return right - left, bottom - top
 
 
-def place_grid(box: Box) -> tuple[int, int, int, int]:
+def place_grid(box: Box) -> PixelBox:
     return math.ceil(box[0]), math.ceil(box[1]), math.floor(box[2]), math.floor(box[3])
 
 
 def paste_with_alpha(
-    image: Image.Image, transparent_content: Image.Image, dest: tuple[int, int]
+    image: Image.Image, transparent_content: Image.Image, dest: Point
 ) -> Image.Image:
     transparent_content = transparent_content.convert("RGBA")
     image.paste(transparent_content, dest, mask=transparent_content)
     return image
 
 
-def center_anchor(box: Box, dimensions: tuple[float, float]) -> Box:
+def center_anchor(box: Box, dimensions: Dimensions) -> Box:
     width, height = dimensions
     left, top, right, bottom = box
-    archor_left = (left + right - width) / 2
-    archor_top = (top + bottom - height) / 2
-    return archor_left, archor_top, archor_left + width, archor_top + height
+    anchor_left = (left + right - width) / 2
+    anchor_top = (top + bottom - height) / 2
+    return anchor_left, anchor_top, anchor_left + width, anchor_top + height
 
 
-def place_above(box: Box, dimensins: tuple[float, float], gap: float = 0) -> Box:
+def place_above(box: Box, dimensins: Dimensions, gap: float = 0) -> Box:
     width, height = dimensins
     left, top, right, _ = box
     return (
@@ -54,7 +58,7 @@ def place_above(box: Box, dimensins: tuple[float, float], gap: float = 0) -> Box
     )
 
 
-def place_below(box: Box, dimensins: tuple[float, float], gap: float = 0) -> Box:
+def place_below(box: Box, dimensins: Dimensions, gap: float = 0) -> Box:
     width, height = dimensins
     left, _, right, bottom = box
     return (

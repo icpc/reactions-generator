@@ -1,5 +1,7 @@
 import math
+from collections.abc import Sequence
 from enum import Enum
+from itertools import pairwise
 
 
 class Easing(Enum):
@@ -9,12 +11,16 @@ class Easing(Enum):
 
 def interpolate(
     value: float,
-    range_values: list[float],
-    output_range: list[float],
+    range_values: Sequence[float],
+    output_range: Sequence[float],
     easing: Easing | None = None,
 ) -> float:
     if len(range_values) != len(output_range):
         raise ValueError("Range and output_range must have the same length")
+    if not range_values:
+        raise ValueError("Interpolation ranges must not be empty")
+    if any(left >= right for left, right in pairwise(range_values)):
+        raise ValueError("Interpolation range values must be strictly increasing")
 
     if value <= range_values[0]:
         return output_range[0]

@@ -18,8 +18,14 @@ the performance reasons for this approach.
 
 Read the files relevant to the task:
 
-- `reactions_generator/cli.py`: Typer commands (`card`, `reaction`, `single`,
-  `all`), media loading/probing, FFmpeg graphs, rendering, and overlayer requests.
+- `reactions_generator/cli.py`: registration of Typer commands (`card`,
+  `reaction`, `single`, `all`) and the CLI entry point.
+- `reactions_generator/media.py`: image loading and media metadata probing.
+- `reactions_generator/rendering.py`: FFmpeg composition and card video encoding.
+- `reactions_generator/overlayer.py`: typed submission parsing, API requests, and
+  rendering of individual submissions.
+- `reactions_generator/worker.py`: polling, deterministic partitioning, and
+  per-submission error reporting.
 - `reactions_generator/card.py`: immutable `Card` model and frame rendering.
 - `reactions_generator/text_layout.py`, `utils.py`, and `interpolate.py`: text
   fitting, image geometry, and animation helpers.
@@ -29,6 +35,7 @@ Read the files relevant to the task:
   licenses and the audio attribution in `example/README.md`.
 - `pyproject.toml`, `poetry.lock`, `Dockerfile`, `docker-compose.yml`, and
   `.github/workflows/`: dependencies, packaging, containers, and CI.
+- `tests/`: regression tests using standard-library `unittest` and mocks.
 
 ## Setup and commands
 
@@ -53,7 +60,7 @@ together. Do not hand-edit lockfile package versions or hashes.
 ## Implementation conventions
 
 - Match the existing code and Ruff formatting. Preserve type annotations; Pyright
-  runs in strict mode with the exceptions configured in `pyproject.toml`. Prefer
+  runs in strict mode without global diagnostic suppressions. Prefer
   precise types at external-data boundaries over broad new suppressions.
 - Keep Typer command names, flags, defaults, and output naming compatible unless
   the requested change intentionally alters them. Reflect user-facing changes in
@@ -81,12 +88,13 @@ owner's required validation:
 ```sh
 poetry run ruff format --check .
 poetry run pyright
+poetry run python -m unittest discover -s tests
 ```
 
 Use `poetry run ruff format <changed-files>` to apply formatting. Ruff linting
 (`poetry run ruff check .`) is an additional useful check, but is not currently
-required by Actions. There is no committed automated test suite or configured
-test runner; do not report a nonexistent test command as passing.
+required by Actions. Unit tests use fixtures and mocks without live network
+requests or FFmpeg processes; keep those checks deterministic.
 
 Validate the behavior touched by the change. Use small local fixtures or short
 renders and write generated media to ignored `out/` or a temporary directory.
@@ -110,9 +118,6 @@ that prevented validation; distinguish existing failures from regressions.
   assets included in the Docker build when changing their locations.
 - The horizontal background default points to `example/background-moscow.png`,
   which is not tracked. Supply an existing background for horizontal validation.
-- The `card` command currently references `Card.width` and `Card.height` as class
-  attributes, although they are dataclass instance fields. Treat a resulting
-  `AttributeError` as an existing issue rather than an upgrade regression.
 - Local custom fonts, root Helvetica files, `out/`, virtual environments, and
   `research.ipynb` are ignored. Do not rely on them being available in a fresh
   checkout or commit generated media, caches, or machine-specific files.

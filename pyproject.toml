@@ -24,8 +24,6 @@ main = "reactions_generator.cli:main"
 
 [tool.pyright]
 typeCheckingMode = "strict"
-reportMissingImports = false
-reportUnknownMemberType = false
 
 [build-system]
 requires = ["poetry-core"]
