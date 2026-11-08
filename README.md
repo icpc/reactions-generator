@@ -23,8 +23,10 @@ The CLI provides `card` for animated cards, `reaction` for manual reaction video
 poetry run main all https://overlayer.example --poll-interval 2
 ```
 
-`all` polls `/reactions/runs.json` in the background while rendering one video at
-a time. `--poll-interval` is the delay between polls in seconds (default: 2).
+`all` polls `/reactions/runs.json` in the background while rendering up to two
+videos concurrently by default. Set `--total-workers` to control local concurrency.
+When `--worker-id` is supplied, this process renders one partition and
+`--total-workers` specifies the number of distributed partitions. `--poll-interval` is the delay between polls in seconds (default: 2).
 New submissions can therefore enter the queue during a render. Each worker
 selects its next render using this priority order:
 
@@ -41,8 +43,9 @@ higher-priority submissions can delay lower-priority ones.
 
 Runs marked `IN_PROGRESS` wait until judged. Each successful poll refreshes the
 waiting queue, removes runs no longer present, and avoids duplicating a running
-submission. Existing output videos are skipped, and `--total-workers` /
-`--worker-id` retain deterministic SHA-256 partitioning across worker processes.
+submission. Existing output videos are skipped. With `--worker-id`, deterministic SHA-256
+partitioning is retained across worker processes. Priority applies when each
+render slot becomes available; active renders are never interrupted.
 
 Polling errors are logged and retried after the poll interval. A failed render
 writes `<id>.err` in the output directory and can be retried on a later poll;

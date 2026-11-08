@@ -79,7 +79,8 @@ together. Do not hand-edit lockfile package versions or hashes.
   handling, and replacement of the destination only after successful encoding.
 - For overlayer changes, preserve deterministic SHA-256 worker partitioning,
   skipping existing submissions unless overwrite is requested, and per-submission
-  error handling. `all` polls in the background while encoding one video at a time.
+  error handling. `all` polls in the background and renders concurrently when
+  `--worker-id` is omitted; an explicit worker ID renders its partition serially.
 - Preserve queue priority: first-to-solve, accepted, then other judged runs, using
   `isFirstToSolve` and `isAccepted` from the live-v3 short-run API. Missing
   `isFirstToSolve` means false. Keep first-discovery FIFO order within a priority,

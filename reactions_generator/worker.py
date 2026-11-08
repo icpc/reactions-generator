@@ -34,7 +34,7 @@ def poll_submissions(
     stop: Event,
     output_directory: str,
     total_workers: int,
-    worker_id: int,
+    worker_id: int | None,
     poll_interval: float,
 ) -> None:
     """Refresh pending work independently of the foreground encoder."""
@@ -46,7 +46,10 @@ def poll_submissions(
                 [
                     run
                     for run in runs
-                    if stable_hash(run.id) % total_workers == worker_id
+                    if (
+                        worker_id is None
+                        or stable_hash(run.id) % total_workers == worker_id
+                    )
                     and not (directory / f"{run.id}.mp4").exists()
                 ]
             )
@@ -64,14 +67,16 @@ def continuous_build_submission(
     vcodec: str = Defaults.vcodec,
     acodec: str = Defaults.acodec,
     vertical: bool = True,
-    total_workers: int = 1,
-    worker_id: int = 0,
+    total_workers: int = 2,
+    worker_id: int | None = None,
     sound: bool = Defaults.sound,
     hwaccel: str | None = Defaults.hwaccel,
     poll_interval: float = 2.0,
 ) -> None:
     """Poll during renders; prioritize first-to-solve, accepted, then other runs."""
-    if total_workers <= 0 or not 0 <= worker_id < total_workers:
+    if total_workers <= 0 or (
+        worker_id is not None and not 0 <= worker_id < total_workers
+    ):
         raise ValueError(
             "Workers require total_workers > 0 and 0 <= worker_id < total_workers"
         )
@@ -95,8 +100,8 @@ def continuous_build_submission(
         name="submission-poller",
         daemon=True,
     )
-    poller.start()
-    try:
+
+    def render_loop() -> None:
         with tqdm(desc="Rendering submissions", unit="submission") as progress:
             while not stop.is_set():
                 run = queue.take(timeout=0.5)
@@ -124,11 +129,26 @@ def continuous_build_submission(
                         id=run.id,
                         output_directory=output_directory,
                     )
-                except Exception as e:  # noqa: BLE001 - One failed run must not stop the worker.
+                except Exception as e:  # noqa: BLE001 - Isolate failed submissions.
                     log_error(str(e), id=run.id, output_directory=output_directory)
                 finally:
                     queue.complete(run.id)
+
+    poller.start()
+    renderers: list[Thread] = []
+    try:
+        if worker_id is not None or total_workers == 1:
+            render_loop()
+        else:
+            for index in range(total_workers):
+                renderer = Thread(target=render_loop, name=f"renderer-{index}")
+                renderer.start()
+                renderers.append(renderer)
+            while not stop.wait(0.5):
+                pass
     finally:
         stop.set()
         queue.close()
         poller.join(timeout=1)
+        for renderer in renderers:
+            renderer.join()

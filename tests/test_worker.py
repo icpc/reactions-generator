@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from collections.abc import Sequence
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 from typing import cast
 from unittest.mock import Mock, patch
 
@@ -107,7 +107,10 @@ class WorkerTests(unittest.TestCase):
                 self.assertRaises(KeyboardInterrupt),
             ):
                 worker.continuous_build_submission(
-                    "https://example.com", output_directory=directory
+                    "https://example.com",
+                    output_directory=directory,
+                    worker_id=0,
+                    total_workers=1,
                 )
             self.assertEqual(
                 [call.kwargs["id"] for call in build.call_args_list], ["bad", "next"]
@@ -115,6 +118,47 @@ class WorkerTests(unittest.TestCase):
             self.assertIn("invalid submission", Path(directory, "bad.err").read_text())
             thread.return_value.join.assert_called_once()
             self.assertIsNone(queue.take(timeout=0))
+
+    def test_local_workers_render_concurrently_without_duplicate_claims(self) -> None:
+        stop = Event()
+        both_started = Event()
+        release = Event()
+        started: list[str] = []
+        runs = [RunSummary("first"), RunSummary("second")]
+
+        def build(*, id: str, **_kwargs: object) -> None:
+            started.append(id)
+            if len(started) == 2:
+                both_started.set()
+            if not release.wait(3):
+                raise TimeoutError("renderers did not overlap")
+            stop.set()
+
+        with tempfile.TemporaryDirectory() as directory:  # noqa: SIM117
+            with (
+                patch.object(worker, "Event", return_value=stop),
+                patch.object(worker, "fetch_runs", return_value=runs),
+                patch.object(worker, "build_submission", side_effect=build),
+                patch.object(worker, "tqdm"),
+            ):
+                runner = Thread(
+                    target=worker.continuous_build_submission,
+                    args=("https://example.com",),
+                    kwargs={
+                        "output_directory": directory,
+                        "total_workers": 2,
+                        "poll_interval": 0.01,
+                    },
+                )
+                runner.start()
+                try:
+                    self.assertTrue(both_started.wait(3), "renders did not overlap")
+                finally:
+                    stop.set()
+                    release.set()
+                    runner.join(3)
+                self.assertFalse(runner.is_alive())
+        self.assertCountEqual(started, ["first", "second"])
 
     def test_new_first_to_solve_arrives_during_render_and_runs_next(self) -> None:
         started = Event()
@@ -180,6 +224,8 @@ class WorkerTests(unittest.TestCase):
                         "https://example.com",
                         output_directory=directory,
                         poll_interval=0.01,
+                        worker_id=0,
+                        total_workers=1,
                     )
             finally:
                 finished.set()
