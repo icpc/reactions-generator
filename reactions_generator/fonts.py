@@ -9,7 +9,7 @@ def load_font(fonts: tuple[str]) -> ImageFont.FreeTypeFont:
     for font in fonts:
         try:
             return ImageFont.truetype(font)
-        except IOError as e:
+        except OSError as e:
             exception = e
     raise exception
 

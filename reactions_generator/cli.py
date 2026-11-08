@@ -1,27 +1,26 @@
-import os
-import math
-import typing
-import requests
 import atexit
 import hashlib
+import math
+import os
 import re
 import subprocess
+import tempfile
+import typing
 from datetime import timedelta
-from io import BytesIO
 from fractions import Fraction
+from io import BytesIO
 from typing import Any, NamedTuple
 
-import typer
-import numpy as np
-from tqdm import tqdm
-
-from PIL import Image, ImageColor
 import ffmpeg
 import ffmpeg.types
+import numpy as np
+import requests
+import typer
+from PIL import Image, ImageColor
+from tqdm import tqdm
 
-from reactions_generator.defaults import Defaults
 from reactions_generator.card import Card
-import tempfile
+from reactions_generator.defaults import Defaults
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -67,7 +66,7 @@ def direct_ffprobe(video_source: str) -> Metadata:
 
     try:
         fps = Fraction(probe["r_frame_rate"])
-    except Exception:
+    except (KeyError, ValueError, ZeroDivisionError):
         fps = Fraction(probe["avg_frame_rate"])
 
     return Metadata(
@@ -128,7 +127,7 @@ def get_metadata(video_source: str, expect_audio: bool = False) -> Metadata:
             if not metadata.audio and expect_audio:
                 typer.echo(f"Audio missing in {video_source}", err=True)
             return metadata
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - Try the next independent metadata probe.
             print(e)
     raise ValueError(f"No metadata found for {video_source}")
 
@@ -176,9 +175,9 @@ def render(
         process.stdin.close()
         process.wait()
         os.replace(tmp_output, output_path)
-    except Exception as e:
+    except Exception:
         clean_up()
-        raise e
+        raise
 
 
 @app.command("card", help="Render a manual card.")
@@ -271,7 +270,7 @@ def render_reaction(
 
     try:
         get_metadata(screen_source)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - Fall back to a static image if probing fails.
         typer.echo(f"Failed to get metadata for screen source: {e}")
         screen_source = f"{task}.png"
 
@@ -498,7 +497,7 @@ def continuous_build_submission(
                     id=id,
                     output_directory=output_directory,
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - One failed submission must not stop the worker.
                 log_error(str(e), id=id, output_directory=output_directory)
 
 

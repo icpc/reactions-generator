@@ -7,8 +7,8 @@ from reactions_generator.colors import Colors
 from reactions_generator.utils import (
     Box,
     center_anchor,
-    place_grid,
     init_transparent_image,
+    place_grid,
 )
 
 
@@ -58,9 +58,8 @@ def try_adding_endline(text: str) -> tuple[bool, str]:
     best_position = -1
 
     for i in range(len(text)):
-        if text[i] == " ":
-            if abs(i - middle) < abs(best_position - middle):
-                best_position = i
+        if text[i] == " " and abs(i - middle) < abs(best_position - middle):
+            best_position = i
 
     if best_position == -1:
         return False, text

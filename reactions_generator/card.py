@@ -5,22 +5,22 @@ from dataclasses import dataclass
 from PIL import Image, ImageDraw, ImageFont
 
 from reactions_generator.colors import Colors
-from reactions_generator.interpolate import interpolate, Easing
-from reactions_generator.utils import (
-    Box,
-    init_transparent_image,
-    paste_with_alpha,
-    center_anchor,
-    place_grid,
-    dimensions,
+from reactions_generator.fonts import (
+    load_bold,
+    load_monspaced,
+    load_regular,
 )
+from reactions_generator.interpolate import Easing, interpolate
 from reactions_generator.text_layout import (
     auto_resize_text,
 )
-from reactions_generator.fonts import (
-    load_regular,
-    load_bold,
-    load_monspaced,
+from reactions_generator.utils import (
+    Box,
+    center_anchor,
+    dimensions,
+    init_transparent_image,
+    paste_with_alpha,
+    place_grid,
 )
 
 
@@ -106,7 +106,7 @@ class Card:
     def resized_logo(self) -> Image.Image:
         logo = self.logo.copy()
         factor = min(self.actual_card_height / logo.height, 152 / logo.width)
-        width, height = map(lambda x: math.ceil(x * factor), logo.size)
+        width, height = (math.ceil(x * factor) for x in logo.size)
         logo = logo.resize((width, height))
         logo.thumbnail((152, self.actual_card_height))
         return logo
