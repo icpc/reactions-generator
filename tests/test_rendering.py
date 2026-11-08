@@ -14,6 +14,40 @@ from reactions_generator.card import Card
 
 
 class RenderingTests(unittest.TestCase):
+    def test_reaction_stops_card_stream_after_animation(self) -> None:
+        metadata = Mock()
+        metadata.fps = 30
+        metadata.duration = 33.3
+        metadata.audio = True
+
+        with (
+            patch.object(rendering, "get_metadata", return_value=metadata),
+            patch.object(
+                rendering,
+                "load_image_or_color",
+                return_value=Image.new("RGBA", (152, 152)),
+            ),
+            patch.object(rendering, "render") as render,
+        ):
+            rendering.render_reaction(
+                webcam_source="webcam.mp4",
+                screen_source="screen.mp4",
+                background_source="background.png",
+                sound=False,
+            )
+
+        card = render.call_args.kwargs["card"]
+        original_last_frame = int(metadata.duration * metadata.fps)
+
+        self.assertEqual(
+            render.call_args.kwargs["last_frame"],
+            min(original_last_frame, card.animation_start + 6),
+        )
+        self.assertLess(
+            render.call_args.kwargs["last_frame"],
+            original_last_frame,
+        )
+
     def test_card_command_uses_the_card_instance_dimensions(self) -> None:
         with (
             patch.object(rendering, "render") as render,

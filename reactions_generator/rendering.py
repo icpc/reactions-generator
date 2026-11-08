@@ -260,10 +260,13 @@ def render_reaction(
         else action_sound
     )
 
+    # The last card animation finishes six frames after animation_start.
+    # FFmpeg's overlay eof_action="repeat" holds this final card frame
+    # while the webcam, screen and audio continue to the end.
     render(
         [audio, video],
         card=card_creator,
-        last_frame=last_frame,
+        last_frame=min(last_frame, animation_start + 6),
         output_path=output_path,
         fps=fps,
         print_progress=print_progress,
