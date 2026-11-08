@@ -42,6 +42,7 @@ def poll_submissions(
     while not stop.is_set():
         try:
             runs = fetch_runs(url)
+            print(f"Fetched {len(runs)} submissions", flush=True)
             queue.update(
                 [
                     run
@@ -108,6 +109,7 @@ def continuous_build_submission(
                 if run is None:
                     continue
                 try:
+                    print(f"Starting render: {run.id}", flush=True)
                     build_submission(
                         id=run.id,
                         url=url,
@@ -122,6 +124,7 @@ def continuous_build_submission(
                         sound=sound,
                         hwaccel=hwaccel,
                     )
+                    print(f"Finished render: {run.id}", flush=True)
                     progress.update(1)
                 except ffmpeg.FFMpegExecuteError as e:
                     log_error(
