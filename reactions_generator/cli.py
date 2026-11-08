@@ -2,6 +2,7 @@
 
 import typer
 
+from reactions_generator.benchmark import benchmark
 from reactions_generator.overlayer import build_submission
 from reactions_generator.rendering import render_card, render_reaction
 from reactions_generator.worker import continuous_build_submission
@@ -14,6 +15,9 @@ app.command("single", help="Render one submission from the overlayer.")(
 )
 app.command("all", help="Continuously render all submissions from the overlayer.")(
     continuous_build_submission
+)
+app.command("benchmark", help="Benchmark full reaction renders and worker counts.")(
+    benchmark
 )
 
 

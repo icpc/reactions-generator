@@ -94,3 +94,65 @@ separately with `poetry run ruff check .`.
    - Read and write using moviepy - the fastest option.
 2. Compose reaction via moviepy - significantly slower than via Pillow.
 3. Compose reaction using ffmpeg - the fastest option by far, current approach.
+
+
+## Encoding and performance
+
+CPU H.264 encoding is the safe default: `libx264 -preset veryfast -crf 23`.
+Hardware acceleration is **opt-in**; there is no automatic GPU selection or
+silent fallback. Select a backend explicitly with `--hardware`. `--hwaccel`
+controls input decoding separately and is not enabled automatically because
+scaling and composition currently use software FFmpeg filters.
+
+| Platform | `--hardware` | Encoder | Default speed setting |
+| --- | --- | --- | --- |
+| CPU-only (any OS) | `cpu` (default) | `libx264` | `veryfast` |
+| NVIDIA (Linux/Windows) | `nvidia` | `h264_nvenc` | `p3` |
+| Intel iGPU (Linux/Windows) | `intel` | `h264_qsv` | `veryfast` |
+| AMD (Windows / supported Linux drivers) | `amd` | `h264_amf` | `speed` |
+| Intel/AMD Linux via VAAPI | `vaapi` | `h264_vaapi` | driver-controlled |
+| Apple Silicon / supported Intel Mac | `apple` | `h264_videotoolbox` | driver-controlled |
+
+`--quality low|balanced|high` (default `balanced`) maps to these encoder-specific
+parameters. The numbers are **not comparable in perceptual quality** across
+encoders; Apple VideoToolbox uses a reversed quality direction.
+
+| Encoder quality control | Low | Balanced | High |
+| --- | ---: | ---: | ---: |
+| x264 CRF | 26 | 23 | 18 |
+| NVENC CQ | 27 | 24 | 19 |
+| QSV global_quality | 27 | 24 | 19 |
+| AMF CQP | 27 | 24 | 19 |
+| VAAPI QP | 27 | 24 | 19 |
+| VideoToolbox q:v | 45 | 60 | 75 |
+
+Quality controls output fidelity/file size; `--preset` controls compression
+speed/efficiency and is validated for the selected backend. `--vcodec` is an
+advanced explicit encoder override, incompatible with non-CPU `--hardware`.
+Unknown custom encoders are passed through without automatic quality mapping.
+
+```sh
+poetry run main reaction                                      # CPU default
+poetry run main reaction --hardware nvidia --quality balanced
+poetry run main reaction --hardware vaapi --vaapi-device /dev/dri/renderD128
+poetry run main all https://overlayer.example --hardware intel --total-workers 2
+poetry run main benchmark --hardware all --worker-counts 1,2,4,8
+```
+
+`benchmark` performs a short capability probe, then full application renders
+(card generation, decoding, scaling, overlays, audio, encoding) using the local
+sample media for each working backend and each requested worker count. It
+writes a JSON report to `out/benchmarks/results.json`; it cleans temporary
+videos and never touches production output. The fastest successful combination
+is recommended based on completed videos per second, not guaranteed equivalent
+perceptual quality. Start with counts `1,2,4` and extend if throughput improves.
+In production, `all --total-workers N` runs N local render threads when
+`--worker-id` is omitted; with an explicit `--worker-id` it retains distributed
+partitioning semantics. The benchmark does not contact the overlayer.
+
+GPU encoding requires an FFmpeg build with the encoder enabled and working
+runtime drivers. NVIDIA in Docker additionally requires exposing the GPU through
+the NVIDIA container runtime; VAAPI in Linux containers requires accessible
+`/dev/dri/renderD*` devices and compatible drivers. The standard CPU Docker
+image continues to work without GPUs. A compiled-in encoder is not proof that
+the hardware or driver will accept encoding: use `benchmark` to verify.

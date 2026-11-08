@@ -65,8 +65,12 @@ def continuous_build_submission(
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
     output_directory: str = Defaults.output_directory,
-    vcodec: str = Defaults.vcodec,
+    vcodec: str | None = Defaults.vcodec,
     acodec: str = Defaults.acodec,
+    hardware: str = Defaults.hardware,
+    quality: str = Defaults.quality,
+    preset: str | None = Defaults.preset,
+    vaapi_device: str | None = Defaults.vaapi_device,
     vertical: bool = True,
     total_workers: int = 2,
     worker_id: int | None = None,
@@ -123,6 +127,10 @@ def continuous_build_submission(
                         vertical=vertical,
                         sound=sound,
                         hwaccel=hwaccel,
+                        hardware=hardware,
+                        quality=quality,
+                        preset=preset,
+                        vaapi_device=vaapi_device,
                     )
                     print(f"Finished render: {run.id}", flush=True)
                     progress.update(1)

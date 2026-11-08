@@ -17,6 +17,7 @@ from PIL import Image
 
 from reactions_generator.card import Card
 from reactions_generator.defaults import Defaults
+from reactions_generator.encoding import EncoderConfig, make_encoder, prepare_video
 from reactions_generator.media import get_metadata, load_image_or_color
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,8 @@ def render(
     output_path: str,
     fps: float,
     print_progress: bool,
-    vcodec: str,
     acodec: str | None,
+    encoding: EncoderConfig,
 ) -> None:
     if fps <= 0 or last_frame < 0:
         raise ValueError("Frame rate must be positive and last frame nonnegative")
@@ -57,19 +58,22 @@ def render(
     )
     tmp_output = Path(temporary_directory.name) / output.name
     try:
+        encoder = encoding
         graph = (
             ffmpeg.output(
                 *ffmpeg_input,
                 filename=str(tmp_output),
-                vcodec=vcodec,
+                vcodec=encoder.codec,
                 acodec=acodec,
                 r=fps,
-                pix_fmt="yuv420p",
+                pix_fmt=encoder.pixel_format,
+                extra_options={**encoder.options, "movflags": "+faststart"},
             )
             .global_args(loglevel="info" if print_progress else "error")
             .overwrite_output()
         )
         command = graph.compile(auto_fix=False)
+        command = [command[0], *encoder.device_args(), *command[1:]]
         # A file can capture arbitrary diagnostics without filling a stderr pipe.
         with tempfile.TemporaryFile() as errors:
             process: subprocess.Popen[bytes] = subprocess.Popen(
@@ -129,10 +133,15 @@ def render_card(
     fps: float = Defaults.fps,
     duration_seconds: float = Defaults.duration_seconds,
     output_path: str = Defaults.output_path,
-    vcodec: str = Defaults.vcodec,
+    vcodec: str | None = Defaults.vcodec,
+    hardware: str = Defaults.hardware,
+    quality: str = Defaults.quality,
+    preset: str | None = Defaults.preset,
+    vaapi_device: str | None = Defaults.vaapi_device,
     print_progress: bool = True,
 ) -> None:
     """Render card as a video file."""
+    encoder = make_encoder(hardware, quality, preset, vcodec, vaapi_device)
     last_frame = math.floor(duration_seconds * fps)
     animation_start = max(0, round(last_frame - 30 * fps))
     logo = load_image_or_color(logo_source, dimensions=(152, 152))
@@ -155,14 +164,18 @@ def render_card(
     )
 
     render(
-        [pipe_card_input(card_creator.width, card_creator.height, fps)],
+        [
+            prepare_video(
+                pipe_card_input(card_creator.width, card_creator.height, fps), encoder
+            )
+        ],
         card=card_creator,
         last_frame=min(last_frame, animation_start + 10),
         output_path=output_path,
         fps=fps,
         print_progress=print_progress,
-        vcodec=vcodec,
         acodec=None,
+        encoding=encoder,
     )
 
 
@@ -183,8 +196,12 @@ def render_reaction(
     success_audio_path: str = Defaults.success_audio_path,
     fail_audio_path: str = Defaults.fail_audio_path,
     output_path: str = Defaults.output_path,
-    vcodec: str = Defaults.vcodec,
+    vcodec: str | None = Defaults.vcodec,
     acodec: str = Defaults.acodec,
+    hardware: str = Defaults.hardware,
+    quality: str = Defaults.quality,
+    preset: str | None = Defaults.preset,
+    vaapi_device: str | None = Defaults.vaapi_device,
     print_progress: bool = True,
     sound: bool = Defaults.sound,
     background_position: tuple[
@@ -196,6 +213,7 @@ def render_reaction(
     hwaccel: str | None = Defaults.hwaccel,
 ) -> None:
     """Render reaction as a video file."""
+    encoder = make_encoder(hardware, quality, preset, vcodec, vaapi_device)
     metadata = get_metadata(webcam_source, expect_audio=True)
     fps = float(metadata.fps)
     last_frame = math.floor(metadata.duration * fps)
@@ -250,6 +268,8 @@ def render_reaction(
         .overlay(card, x=card_position[0], y=card_position[1], eof_action="repeat")
     )
 
+    video = prepare_video(video, encoder)
+
     audio = (
         ffmpeg.filters.amix(
             ffmpeg.input(webcam_source, hwaccel=hwaccel).audio,
@@ -270,6 +290,6 @@ def render_reaction(
         output_path=output_path,
         fps=fps,
         print_progress=print_progress,
-        vcodec=vcodec,
         acodec=acodec,
+        encoding=encoder,
     )

@@ -11,6 +11,7 @@ from PIL import Image
 
 from reactions_generator import rendering
 from reactions_generator.card import Card
+from reactions_generator.encoding import make_encoder
 
 
 class RenderingTests(unittest.TestCase):
@@ -100,8 +101,8 @@ class RenderingTests(unittest.TestCase):
                     output_path=str(output),
                     fps=1,
                     print_progress=False,
-                    vcodec="libx264",
                     acodec=None,
+                    encoding=make_encoder(),
                 )
 
             self.assertEqual(output.read_bytes(), b"previous video")
@@ -154,8 +155,8 @@ class RenderingTests(unittest.TestCase):
                         output_path=str(output),
                         fps=1,
                         print_progress=False,
-                        vcodec="libx264",
                         acodec=None,
+                        encoding=make_encoder(),
                     )
 
                 if returncode:

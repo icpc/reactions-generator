@@ -61,7 +61,11 @@ class Defaults:
     fail_audio_path = "example/fail.mp3"
     fps = 30
     duration_seconds = 60
-    vcodec = "libx264"
+    vcodec: str | None = None
+    hardware = "cpu"
+    quality = "balanced"
+    preset: ClassVar[str | None] = None
+    vaapi_device: ClassVar[str | None] = None
     acodec = "aac"
     hwaccel: ClassVar[str | None] = None
     output_directory = "out"
