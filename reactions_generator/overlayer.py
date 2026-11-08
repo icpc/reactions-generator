@@ -14,6 +14,26 @@ from reactions_generator.rendering import render_reaction
 
 
 @dataclass(frozen=True, slots=True)
+class RunSummary:
+    """Scheduling metadata from live-v3's /reactions/runs.json."""
+
+    id: str
+    verdict: str = ""
+    is_accepted: bool = False
+    is_first_to_solve: bool = False
+
+    @property
+    def priority(self) -> int:
+        if self.is_first_to_solve:
+            return 0
+        return 1 if self.is_accepted else 2
+
+    @property
+    def is_pending(self) -> bool:
+        return self.verdict == "IN_PROGRESS"
+
+
+@dataclass(frozen=True, slots=True)
 class Submission:
     """Validated overlayer data needed to render a reaction."""
 
@@ -129,16 +149,30 @@ def fetch_submission(url: str, id: str) -> Submission:
     return parse_submission(response.json())
 
 
-def fetch_submission_ids(url: str) -> list[str]:
+def parse_run_summary(payload: object) -> RunSummary:
+    run = _object(payload, "run")
+    id = run.get("id")
+    if isinstance(id, bool) or not isinstance(id, (str, int)):
+        raise TypeError("run.id must be a string or integer")
+    return RunSummary(
+        id=str(id),
+        verdict=_text(run.get("verdict", ""), "run.verdict"),
+        is_accepted=_boolean(run.get("isAccepted", False), "run.isAccepted"),
+        # live-v3 omits this field when false (EncodeDefault.Mode.NEVER).
+        is_first_to_solve=_boolean(
+            run.get("isFirstToSolve", False), "run.isFirstToSolve"
+        ),
+    )
+
+
+def fetch_runs(url: str) -> list[RunSummary]:
     response = requests.get(f"{url.rstrip('/')}/reactions/runs.json", timeout=30)
     response.raise_for_status()
-    ids: list[str] = []
-    for run in _array(response.json(), "runs"):
-        id = _object(run, "run").get("id")
-        if isinstance(id, bool) or not isinstance(id, (str, int)):
-            raise TypeError("run.id must be a string or integer")
-        ids.append(str(id))
-    return ids
+    return [parse_run_summary(run) for run in _array(response.json(), "runs")]
+
+
+def fetch_submission_ids(url: str) -> list[str]:
+    return [run.id for run in fetch_runs(url)]
 
 
 def build_submission(

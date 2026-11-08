@@ -26,6 +26,8 @@ Read the files relevant to the task:
   rendering of individual submissions.
 - `reactions_generator/worker.py`: polling, deterministic partitioning, and
   per-submission error reporting.
+- `reactions_generator/scheduler.py`: thread-safe priority scheduling and
+  in-flight submission tracking.
 - `reactions_generator/card.py`: immutable `Card` model and frame rendering.
 - `reactions_generator/text_layout.py`, `utils.py`, and `interpolate.py`: text
   fitting, image geometry, and animation helpers.
@@ -77,7 +79,15 @@ together. Do not hand-edit lockfile package versions or hashes.
   handling, and replacement of the destination only after successful encoding.
 - For overlayer changes, preserve deterministic SHA-256 worker partitioning,
   skipping existing submissions unless overwrite is requested, and per-submission
-  error handling. `all` polls continuously; use bounded fixtures for validation.
+  error handling. `all` polls in the background while encoding one video at a time.
+- Preserve queue priority: first-to-solve, accepted, then other judged runs, using
+  `isFirstToSolve` and `isAccepted` from the live-v3 short-run API. Missing
+  `isFirstToSolve` means false. Keep first-discovery FIFO order within a priority,
+  refresh waiting priorities on polls, and never preempt an active encode.
+- Keep `IN_PROGRESS` runs out of the render queue until judged. Poll snapshots
+  remove vanished waiting runs and deduplicate in-flight work. Poll failures
+  retry after `--poll-interval`; failed renders record `.err` files and may retry
+  on later polls. Use bounded fixtures and synchronization events for queue tests.
 
 ## Validation
 

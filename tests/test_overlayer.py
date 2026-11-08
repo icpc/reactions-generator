@@ -37,6 +37,35 @@ def submission_payload(
 
 
 class SubmissionTests(unittest.TestCase):
+    def test_run_summary_uses_exporter_priority_flags(self) -> None:
+        first = overlayer.parse_run_summary(
+            {"id": 1, "isFirstToSolve": True, "isAccepted": True, "verdict": "AC"}
+        )
+        accepted = overlayer.parse_run_summary(
+            {"id": "2", "isAccepted": True, "verdict": "AC"}
+        )
+        rejected = overlayer.parse_run_summary(
+            {"id": "3", "isAccepted": False, "verdict": "WA"}
+        )
+        pending = overlayer.parse_run_summary(
+            {"id": "4", "isAccepted": False, "verdict": "IN_PROGRESS"}
+        )
+        self.assertEqual(first.id, "1")
+        self.assertEqual(
+            [first.priority, accepted.priority, rejected.priority], [0, 1, 2]
+        )
+        self.assertFalse(accepted.is_first_to_solve)
+        self.assertTrue(pending.is_pending)
+
+    def test_run_summary_rejects_malformed_flags(self) -> None:
+        for payload in (
+            {"id": "1", "isFirstToSolve": "false"},
+            {"id": "1", "isAccepted": 1},
+            {"id": True},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(TypeError):
+                overlayer.parse_run_summary(payload)
+
     def test_verdict_data_is_normalized_into_typed_submission(self) -> None:
         submission = overlayer.parse_submission(submission_payload())
 
