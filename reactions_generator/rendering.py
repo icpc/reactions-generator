@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
+from threading import Lock
 from urllib.parse import urlsplit
 
 import ffmpeg
@@ -25,6 +26,18 @@ from reactions_generator.media import get_metadata, load_image_or_color, stage_m
 from reactions_generator.nvidia_full import build_nvidia_full_command, settings_from_cli
 
 logger = logging.getLogger(__name__)
+_active_processes: set[subprocess.Popen[bytes]] = set()
+_active_processes_lock = Lock()
+
+
+def kill_active_renders() -> None:
+    """Kill active FFmpeg processes in response to an immediate shutdown."""
+    with _active_processes_lock:
+        processes = tuple(_active_processes)
+    for process in processes:
+        if process.poll() is None:
+            with suppress(OSError):
+                process.kill()
 
 
 def pipe_card_input(width: int, height: int, fps: float) -> ffmpeg.VideoStream:
@@ -69,6 +82,8 @@ def run_card_command(
                 stderr=None if print_progress else errors,
                 env={**os.environ, "FFREPORT": f"file={log_path.as_posix()}:level=32"},
             )
+            with _active_processes_lock:
+                _active_processes.add(process)
 
             def clean_up() -> None:
                 if process.poll() is None:
@@ -106,6 +121,8 @@ def run_card_command(
             finally:
                 atexit.unregister(clean_up)
                 clean_up()
+                with _active_processes_lock:
+                    _active_processes.discard(process)
 
 
 def render(

@@ -17,6 +17,7 @@ import ffmpeg
 from reactions_generator.defaults import Defaults
 from reactions_generator.overlayer import RunSummary, build_submission, fetch_runs
 from reactions_generator.progress import RenderProgress
+from reactions_generator.rendering import kill_active_renders
 from reactions_generator.scheduler import SubmissionQueue
 
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ def shutdown_signals(stop: Event) -> Generator[None, None, None]:
 
     def interrupt(_signum: int, _frame: FrameType | None) -> None:
         stop.set()
+        kill_active_renders()
 
     previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
     try:
