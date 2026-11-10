@@ -27,6 +27,9 @@ poetry run main all https://overlayer.example --poll-interval 2
 video at a time by default. Set `--total-workers` to control local concurrency.
 A fixed pool of renderer threads takes videos from the priority queue. Each
 renderer finishes its video before taking the highest-priority waiting submission.
+Each render downloads its remote webcam and screen media into a temporary
+directory before probing or encoding. The files are removed when the render
+ends, including after failures or interruptions.
 Renderers share one Rich progress bar showing processed submissions, the current
 total, failed attempts, submissions per second, and estimated time remaining.
 New eligible submissions increase the total;

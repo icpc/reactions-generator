@@ -2,19 +2,110 @@ import io
 import stat
 import tempfile
 import unittest
+from collections.abc import Iterator
 from pathlib import Path
 from typing import cast
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import ffmpeg
 from PIL import Image
 
-from reactions_generator import rendering
+from reactions_generator import media, rendering
 from reactions_generator.card import Card
 from reactions_generator.encoding import make_encoder
 
 
 class RenderingTests(unittest.TestCase):
+    def test_remote_inputs_are_staged_and_cleaned_up(self) -> None:
+        for error in (
+            None,
+            media.requests.exceptions.ConnectionError,
+            RuntimeError,
+            KeyboardInterrupt,
+        ):
+            with self.subTest(error=error):
+                self.check_staged_inputs(error)
+
+    def check_staged_inputs(self, error: type[BaseException] | None) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            webcam = "https://example.com/camera.mp4?token=123"
+            screen = "https://example.com/desktop.webm?token=456"
+            sources = [webcam, screen]
+            metadata = Mock(fps=30, duration=1.0, audio=True)
+            response = MagicMock()
+            response.__enter__.return_value = response
+            download_fails = error is media.requests.exceptions.ConnectionError
+
+            def download(source: str, **_kwargs: object) -> MagicMock:
+                self.assertIn(source, sources)
+                response.iter_content.return_value = iter([source.encode()])
+                if download_fails and source == webcam:
+
+                    def interrupted_download() -> Iterator[bytes]:
+                        yield b"partial"
+                        raise media.requests.exceptions.ConnectionError(
+                            "lost connection"
+                        )
+
+                    response.iter_content.return_value = interrupted_download()
+                return response
+
+            def probe(source: str, **_kwargs: object) -> Mock:
+                path = Path(source)
+                self.assertEqual(path.parent.parent, Path(root))
+                self.assertEqual(
+                    (path.parent / "webcam.mp4").read_bytes(), webcam.encode()
+                )
+                self.assertEqual(
+                    (path.parent / "screen.webm").read_bytes(), screen.encode()
+                )
+                return metadata
+
+            with (
+                patch.object(media.requests, "get", side_effect=download) as get,
+                patch.object(
+                    rendering, "get_metadata", side_effect=probe
+                ) as get_metadata,
+                patch.object(rendering, "render", side_effect=error) as render,
+                patch.object(
+                    rendering.ffmpeg, "input", wraps=rendering.ffmpeg.input
+                ) as ffmpeg_input,
+                patch.object(tempfile, "tempdir", root),
+            ):
+
+                def run() -> None:
+                    rendering.render_reaction(
+                        webcam_source=webcam,
+                        screen_source=screen,
+                        logo_source="#ffffff",
+                        sound=True,
+                    )
+
+                if error is None:
+                    run()
+                else:
+                    with self.assertRaises(error):
+                        run()
+
+            self.assertEqual(list(Path(root).iterdir()), [])
+            if download_fails:
+                get_metadata.assert_not_called()
+                render.assert_not_called()
+            else:
+                self.assertEqual([call.args[0] for call in get.call_args_list], sources)
+                self.assertTrue(
+                    all(call.kwargs["stream"] for call in get.call_args_list)
+                )
+                inputs = [call.args[0] for call in ffmpeg_input.call_args_list]
+                self.assertEqual(
+                    sum(path.endswith("/webcam.mp4") for path in inputs), 2
+                )
+                self.assertEqual(
+                    sum(path.endswith("/screen.webm") for path in inputs), 1
+                )
+                self.assertNotIn(webcam, inputs)
+                self.assertNotIn(screen, inputs)
+
     def test_reaction_stops_card_stream_after_animation(self) -> None:
         metadata = Mock()
         metadata.fps = 30

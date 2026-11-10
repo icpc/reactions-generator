@@ -1,7 +1,5 @@
-import tempfile
 import unittest
 from fractions import Fraction
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 from reactions_generator import media
@@ -52,43 +50,6 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(metadata.duration, 1.25)
         self.assertEqual(metadata.fps, 24)
         self.assertTrue(metadata.audio)
-
-    def test_downloaded_probe_input_is_removed_after_success_or_failure(self) -> None:
-        for fails in (False, True):
-            with self.subTest(fails=fails):
-                self.check_downloaded_probe(fails=fails)
-
-    def check_downloaded_probe(self, *, fails: bool) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            response = Mock(content=b"downloaded video")
-            paths: list[Path] = []
-            expected = media.Metadata(Fraction(30), 1.0, False)
-
-            def probe(source: str) -> media.Metadata:
-                path = Path(source)
-                paths.append(path)
-                self.assertEqual(path.read_bytes(), response.content)
-                if fails:
-                    raise ValueError("unsupported video")
-                return expected
-
-            with (
-                patch.object(media.requests, "get", return_value=response) as get,
-                patch.object(media, "direct_ffprobe", side_effect=probe),
-                patch.object(media.tempfile, "tempdir", directory),
-            ):
-                if fails:
-                    with self.assertRaises(ValueError):
-                        media.download_and_ffprobe("https://example.com/video.mp4")
-                else:
-                    self.assertEqual(
-                        media.download_and_ffprobe("https://example.com/video.mp4"),
-                        expected,
-                    )
-            self.assertEqual(len(paths), 1)
-            self.assertFalse(paths[0].exists())
-            self.assertEqual(list(Path(directory).iterdir()), [])
-            self.assertEqual(get.call_args.kwargs["timeout"], 30)
 
 
 if __name__ == "__main__":

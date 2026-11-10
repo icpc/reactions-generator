@@ -11,6 +11,7 @@ import ffmpeg
 from PIL import Image
 
 from reactions_generator import rendering
+from reactions_generator.defaults import Defaults
 from reactions_generator.nvidia_full import (
     NvidiaFullSettings,
     build_nvidia_full_command,
@@ -123,8 +124,14 @@ class NvidiaDispatchTests(unittest.TestCase):
     def test_full_dispatch_skips_software_graph_and_handles_signed_images(self) -> None:
         metadata = Mock(fps=30, duration=33.3, audio=True)
         for source in ("screen.mp4", "https://example.com/A.PNG?token=123"):
+            staged_screen = "screen.mp4" if source.endswith("mp4") else "screen.PNG"
             with (
                 self.subTest(source=source),
+                patch.object(
+                    rendering,
+                    "stage_media",
+                    side_effect=[Defaults.webcam_source, staged_screen],
+                ),
                 patch.object(rendering, "get_metadata", return_value=metadata) as probe,
                 patch.object(
                     rendering,
@@ -137,6 +144,7 @@ class NvidiaDispatchTests(unittest.TestCase):
             ):
                 rendering.render_reaction(hardware="nvidia_full", screen_source=source)
                 command = run.call_args.kwargs["command"]
+                self.assertIn(staged_screen, command)
                 self.assertIn(
                     "overlay_cuda", command[command.index("-filter_complex") + 1]
                 )

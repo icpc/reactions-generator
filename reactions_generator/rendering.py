@@ -21,7 +21,7 @@ from PIL import Image
 from reactions_generator.card import Card
 from reactions_generator.defaults import Defaults
 from reactions_generator.encoding import EncoderConfig, make_encoder, prepare_video
-from reactions_generator.media import get_metadata, load_image_or_color
+from reactions_generator.media import get_metadata, load_image_or_color, stage_media
 from reactions_generator.nvidia_full import build_nvidia_full_command, settings_from_cli
 
 logger = logging.getLogger(__name__)
@@ -232,128 +232,135 @@ def render_reaction(
     hwaccel: str | None = Defaults.hwaccel,
 ) -> None:
     """Render reaction as a video file."""
-    metadata = get_metadata(webcam_source, expect_audio=True)
-    fps = float(metadata.fps)
-    last_frame = math.floor(metadata.duration * fps)
-    animation_start = max(0, round(last_frame - 30 * fps))
+    with tempfile.TemporaryDirectory(prefix="reaction-inputs-") as directory:
+        inputs = Path(directory)
+        webcam_source = stage_media(webcam_source, inputs, "webcam")
 
-    screen_is_video = (
-        not urlsplit(screen_source)
-        .path.lower()
-        .endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp"))
-    )
-    try:
-        if screen_is_video:
-            get_metadata(screen_source)
-    except Exception as exc:  # noqa: BLE001 - existing fallback rule
-        logger.warning("Failed to get metadata for screen source: %s", exc)
-        screen_source = f"{task}.png"
-        screen_is_video = False
-
-    logo = load_image_or_color(logo_source, dimensions=(152, 152))
-    card_creator = Card(
-        title=title,
-        subtitle=subtitle,
-        hashtag=hashtag,
-        task=task,
-        time=time,
-        outcome=outcome,
-        success=success,
-        rank_before=rank_before,
-        rank_after=rank_after,
-        logo=logo,
-        animation_start=animation_start,
-        fps=fps,
-        width=card_position[2],
-        height=card_position[3],
-    )
-
-    if hardware == "nvidia_full":
-        if vaapi_device is not None:
-            raise ValueError("--vaapi-device requires --hardware vaapi")
-        # Use the branch's existing quality/preset options. Map them to NVENC.
-        settings = settings_from_cli(
-            quality=quality,
-            preset=preset,
-            vcodec=vcodec,
+        screen_is_video = (
+            not urlsplit(screen_source)
+            .path.lower()
+            .endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp"))
         )
-        command = build_nvidia_full_command(
-            webcam_source=webcam_source,
-            screen_source=screen_source,
-            screen_is_video=screen_is_video,
-            background_source=background_source,
-            action_audio_path=success_audio_path if success else fail_audio_path,
-            output_path=output_path,
-            fps=fps,
-            duration=metadata.duration,
+        try:
+            screen_source = stage_media(screen_source, inputs, "screen")
+            if screen_is_video:
+                get_metadata(screen_source)
+        except Exception as exc:
+            if not screen_is_video:
+                raise
+            logger.warning("Failed to prepare screen source: %s", exc)
+            screen_source = f"{task}.png"
+            screen_is_video = False
+
+        metadata = get_metadata(webcam_source, expect_audio=True)
+        fps = float(metadata.fps)
+        last_frame = math.floor(metadata.duration * fps)
+        animation_start = max(0, round(last_frame - 30 * fps))
+
+        logo = load_image_or_color(logo_source, dimensions=(152, 152))
+        card_creator = Card(
+            title=title,
+            subtitle=subtitle,
+            hashtag=hashtag,
+            task=task,
+            time=time,
+            outcome=outcome,
+            success=success,
+            rank_before=rank_before,
+            rank_after=rank_after,
+            logo=logo,
             animation_start=animation_start,
-            has_webcam_audio=metadata.audio,
-            sound=sound,
-            background_position=background_position,
-            webcam_position=webcam_position,
-            screen_position=screen_position,
-            card_position=card_position,
-            acodec=acodec,
-            print_progress=print_progress,
-            settings=settings,
+            fps=fps,
+            width=card_position[2],
+            height=card_position[3],
         )
-        run_card_command(
-            command=command,
+
+        if hardware == "nvidia_full":
+            if vaapi_device is not None:
+                raise ValueError("--vaapi-device requires --hardware vaapi")
+            # Use the branch's existing quality/preset options. Map them to NVENC.
+            settings = settings_from_cli(
+                quality=quality,
+                preset=preset,
+                vcodec=vcodec,
+            )
+            command = build_nvidia_full_command(
+                webcam_source=webcam_source,
+                screen_source=screen_source,
+                screen_is_video=screen_is_video,
+                background_source=background_source,
+                action_audio_path=success_audio_path if success else fail_audio_path,
+                output_path=output_path,
+                fps=fps,
+                duration=metadata.duration,
+                animation_start=animation_start,
+                has_webcam_audio=metadata.audio,
+                sound=sound,
+                background_position=background_position,
+                webcam_position=webcam_position,
+                screen_position=screen_position,
+                card_position=card_position,
+                acodec=acodec,
+                print_progress=print_progress,
+                settings=settings,
+            )
+            run_card_command(
+                command=command,
+                card=card_creator,
+                last_frame=min(last_frame, animation_start + 6),
+                output_path=output_path,
+                print_progress=print_progress,
+            )
+            return
+
+        encoder = make_encoder(hardware, quality, preset, vcodec, vaapi_device)
+        background = ffmpeg.input(background_source, hwaccel=hwaccel).scale(
+            w=background_position[2], h=background_position[3]
+        )
+        webcam = (
+            ffmpeg.input(webcam_source, hwaccel=hwaccel)
+            .video.scale(w=webcam_position[2], h=webcam_position[3])
+            .setpts(expr="PTS-STARTPTS")
+        )
+        screen = (
+            ffmpeg.input(screen_source, hwaccel=hwaccel)
+            .video.scale(w=screen_position[2], h=screen_position[3])
+            .setpts(expr="PTS-STARTPTS")
+        )
+        card = pipe_card_input(card_position[2], card_position[3], fps)
+
+        action_sound = ffmpeg.input(
+            success_audio_path if success else fail_audio_path
+        ).adelay(delays=animation_start / fps * 1000, all=True)
+
+        video = (
+            background.overlay(webcam, x=webcam_position[0], y=webcam_position[1])
+            .overlay(screen, x=screen_position[0], y=screen_position[1])
+            .overlay(card, x=card_position[0], y=card_position[1], eof_action="repeat")
+        )
+
+        video = prepare_video(video, encoder)
+
+        audio = (
+            ffmpeg.filters.amix(
+                ffmpeg.input(webcam_source, hwaccel=hwaccel).audio,
+                action_sound,
+                duration="longest",
+            )
+            if metadata.audio and sound
+            else action_sound
+        )
+
+        # The last card animation finishes six frames after animation_start.
+        # FFmpeg's overlay eof_action="repeat" holds this final card frame
+        # while the webcam, screen and audio continue to the end.
+        render(
+            [audio, video],
             card=card_creator,
             last_frame=min(last_frame, animation_start + 6),
             output_path=output_path,
+            fps=fps,
             print_progress=print_progress,
+            acodec=acodec,
+            encoding=encoder,
         )
-        return
-
-    encoder = make_encoder(hardware, quality, preset, vcodec, vaapi_device)
-    background = ffmpeg.input(background_source, hwaccel=hwaccel).scale(
-        w=background_position[2], h=background_position[3]
-    )
-    webcam = (
-        ffmpeg.input(webcam_source, hwaccel=hwaccel)
-        .video.scale(w=webcam_position[2], h=webcam_position[3])
-        .setpts(expr="PTS-STARTPTS")
-    )
-    screen = (
-        ffmpeg.input(screen_source, hwaccel=hwaccel)
-        .video.scale(w=screen_position[2], h=screen_position[3])
-        .setpts(expr="PTS-STARTPTS")
-    )
-    card = pipe_card_input(card_position[2], card_position[3], fps)
-
-    action_sound = ffmpeg.input(
-        success_audio_path if success else fail_audio_path
-    ).adelay(delays=animation_start / fps * 1000, all=True)
-
-    video = (
-        background.overlay(webcam, x=webcam_position[0], y=webcam_position[1])
-        .overlay(screen, x=screen_position[0], y=screen_position[1])
-        .overlay(card, x=card_position[0], y=card_position[1], eof_action="repeat")
-    )
-
-    video = prepare_video(video, encoder)
-
-    audio = (
-        ffmpeg.filters.amix(
-            ffmpeg.input(webcam_source, hwaccel=hwaccel).audio,
-            action_sound,
-            duration="longest",
-        )
-        if metadata.audio and sound
-        else action_sound
-    )
-
-    # The last card animation finishes six frames after animation_start.
-    # FFmpeg's overlay eof_action="repeat" holds this final card frame
-    # while the webcam, screen and audio continue to the end.
-    render(
-        [audio, video],
-        card=card_creator,
-        last_frame=min(last_frame, animation_start + 6),
-        output_path=output_path,
-        fps=fps,
-        print_progress=print_progress,
-        acodec=acodec,
-        encoding=encoder,
-    )

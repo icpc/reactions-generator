@@ -2,10 +2,11 @@
 
 import logging
 import re
-import tempfile
 from fractions import Fraction
 from io import BytesIO
+from pathlib import Path
 from typing import NamedTuple, TypedDict, cast
+from urllib.parse import unquote, urlsplit
 
 import ffmpeg
 import requests
@@ -78,19 +79,22 @@ def direct_ffprobe(video_source: str) -> Metadata:
     )
 
 
-def download_and_ffprobe(video_source: str) -> Metadata:
-    if not video_source.startswith(("http://", "https://")):
-        raise ValueError(f"{video_source} is not a URL")
+def stage_media(source: str, directory: Path, name: str) -> str:
+    """Download an HTTP media source into the render's temporary directory."""
+    url = urlsplit(source)
+    if url.scheme not in {"http", "https"}:
+        return source
 
-    response = requests.get(video_source, timeout=30)
-    response.raise_for_status()
-
-    with tempfile.NamedTemporaryFile(delete_on_close=False) as fp:
-        fp.write(response.content)
-        fp.close()
-        metadata = direct_ffprobe(fp.name)
-
-    return metadata
+    suffix = Path(unquote(url.path)).suffix
+    if not re.fullmatch(r"\.[A-Za-z0-9]{1,12}", suffix):
+        suffix = ""
+    destination = directory / f"{name}{suffix}"
+    with requests.get(source, stream=True, timeout=30) as response:
+        response.raise_for_status()
+        with destination.open("wb") as output:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                output.write(chunk)
+    return str(destination)
 
 
 def metadata_via_ffmpeg(video_source: str) -> Metadata:
@@ -120,7 +124,7 @@ def metadata_via_ffmpeg(video_source: str) -> Metadata:
 
 
 def get_metadata(video_source: str, expect_audio: bool = False) -> Metadata:
-    for metadata_method in [direct_ffprobe, download_and_ffprobe, metadata_via_ffmpeg]:
+    for metadata_method in (direct_ffprobe, metadata_via_ffmpeg):
         try:
             metadata = metadata_method(video_source)
             if not metadata.audio and expect_audio:
