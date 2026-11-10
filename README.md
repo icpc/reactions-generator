@@ -23,11 +23,20 @@ The CLI provides `card` for animated cards, `reaction` for manual reaction video
 poetry run main all https://overlayer.example --poll-interval 2
 ```
 
-`all` polls `/reactions/runs.json` in the background while rendering up to two
-videos concurrently by default. Set `--total-workers` to control local concurrency.
+`all` polls `/reactions/runs.json` in a dedicated thread while rendering one
+video at a time by default. Set `--total-workers` to control local concurrency.
+A fixed pool of renderer threads takes videos from the priority queue. Each
+renderer finishes its video before taking the highest-priority waiting submission.
+Renderers share one progress bar showing processed submissions out of the current
+total, including failed attempts. New eligible submissions increase the total;
+vanished waiting submissions decrease it. Routine status messages are suppressed.
 When `--worker-id` is supplied, this process renders one partition and
 `--total-workers` specifies the number of distributed partitions. `--poll-interval` is the delay between polls in seconds (default: 2).
-New submissions can therefore enter the queue during a render. Each worker
+The pool has one polling thread in addition to the render threads. The main thread
+waits for shutdown. Renderers continue taking queued videos during API requests;
+new submissions enter the queue on each poll. Shutdown stops dispatching new work
+and waits for active jobs and the current API request (timeout: 30 seconds).
+Each worker
 selects its next render using this priority order:
 
 1. First-to-solve submissions (`isFirstToSolve`).
@@ -48,8 +57,10 @@ partitioning is retained across worker processes. Priority applies when each
 render slot becomes available; active renders are never interrupted.
 
 Polling errors are logged and retried after the poll interval. A failed render
-writes `<id>.err` in the output directory and can be retried on a later poll;
-existing videos are preserved on failure. The queue is held in memory and rebuilt
+writes `<id>.err` in the output directory and is skipped on later polls and after
+restart. Delete its `.err` file to allow an intentional retry. Shutting down with
+Ctrl+C or SIGTERM does not mark interrupted renders as failed. Existing videos
+are preserved on failure. The queue is held in memory and rebuilt
 from the API and existing output files after restart.
 
 ## Dev setup
@@ -78,6 +89,10 @@ separately with `poetry run ruff check .`.
 - `scheduler.py` maintains the waiting queue, priorities, and in-flight entries.
 - `card.py`, `text_layout.py`, and the supporting modules draw animated cards.
 - `tests/` contains regression tests using Python's standard-library `unittest`.
+
+Image and font helpers use bounded LRU caches (128 entries per cache). Each
+completed task releases its card and resized logo; shared caches retain recent
+entries for reuse without growing indefinitely. The bounds count entries, not bytes.
 
 ## Follow-up work
 

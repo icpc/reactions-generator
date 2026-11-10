@@ -19,13 +19,13 @@ class SubmissionQueueTests(unittest.TestCase):
             ]
         )
 
-        claimed = [queue.take(timeout=0) for _ in range(6)]
+        claimed = [queue.take() for _ in range(6)]
 
         self.assertEqual(
             [run.id for run in claimed if run is not None],
             ["first-1", "first-2", "accepted-1", "accepted-2", "rest-1", "rest-2"],
         )
-        self.assertIsNone(queue.take(timeout=0))
+        self.assertEqual(len(queue), 0)
 
     def test_updates_reprioritize_without_changing_fifo_ties(self) -> None:
         queue = SubmissionQueue()
@@ -45,7 +45,7 @@ class SubmissionQueueTests(unittest.TestCase):
             ]
         )
 
-        claimed = [queue.take(timeout=0) for _ in range(4)]
+        claimed = [queue.take() for _ in range(4)]
 
         self.assertEqual(
             [run.id for run in claimed if run is not None],
@@ -62,11 +62,11 @@ class SubmissionQueueTests(unittest.TestCase):
             ]
         )
         self.assertEqual(len(queue), 1)
-        self.assertEqual(queue.take(timeout=0), RunSummary("still-present"))
-        self.assertIsNone(queue.take(timeout=0))
+        self.assertEqual(queue.take(), RunSummary("still-present"))
+        self.assertEqual(len(queue), 0)
 
         queue.update([RunSummary("unjudged", verdict="AC", is_accepted=True)])
-        run = queue.take(timeout=0)
+        run = queue.take()
         self.assertIsNotNone(run)
         self.assertEqual(run.id if run else None, "unjudged")
 
@@ -75,18 +75,18 @@ class SubmissionQueueTests(unittest.TestCase):
         first = RunSummary("first")
         second = RunSummary("second")
         queue.update([first, second])
-        self.assertEqual(queue.take(timeout=0), first)
+        self.assertEqual(queue.take(), first)
 
         queue.update([first, first, second, second])
         self.assertEqual(len(queue), 1)
-        self.assertEqual(queue.take(timeout=0), second)
-        self.assertIsNone(queue.take(timeout=0))
+        self.assertEqual(queue.take(), second)
+        self.assertEqual(len(queue), 0)
 
         queue.complete("first")
-        self.assertIsNone(queue.take(timeout=0))
+        self.assertEqual(len(queue), 0)
         queue.update([first, second])
-        self.assertEqual(queue.take(timeout=0), first)
-        self.assertIsNone(queue.take(timeout=0))
+        self.assertEqual(queue.take(), first)
+        self.assertEqual(len(queue), 0)
 
     def test_new_snapshot_wakes_a_waiting_consumer(self) -> None:
         queue = SubmissionQueue()
@@ -96,7 +96,7 @@ class SubmissionQueueTests(unittest.TestCase):
 
         def consume() -> None:
             waiting.set()
-            claimed.append(queue.take(timeout=2))
+            claimed.append(queue.take())
             finished.set()
 
         consumer = Thread(target=consume, daemon=True)
@@ -131,7 +131,7 @@ class SubmissionQueueTests(unittest.TestCase):
             self.assertEqual(claimed, [None])
             queue.update([RunSummary("ignored")])
             self.assertEqual(len(queue), 0)
-            self.assertIsNone(queue.take(timeout=0))
+            self.assertIsNone(queue.take())
         finally:
             queue.close()
             consumer.join(timeout=2)

@@ -31,7 +31,7 @@ def load_font(font: ImageFont.FreeTypeFont, size: int) -> ImageFont.FreeTypeFont
     return font.font_variant(size=size)
 
 
-@functools.cache
+@functools.lru_cache(maxsize=128)
 def render_place(current_rank: int) -> Image.Image:
     padding = 16
     text = f"{current_rank}{get_ordinal(current_rank)} place"

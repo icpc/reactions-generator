@@ -4,17 +4,43 @@ import hashlib
 import logging
 import math
 import os
+import signal
+from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Lock, current_thread, main_thread
+from types import FrameType
 
 import ffmpeg
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 
 from reactions_generator.defaults import Defaults
-from reactions_generator.overlayer import build_submission, fetch_runs
+from reactions_generator.overlayer import RunSummary, build_submission, fetch_runs
 from reactions_generator.scheduler import SubmissionQueue
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def shutdown_signals(stop: Event) -> Generator[None, None, None]:
+    """Mark cancellation before interrupted encoders report their errors."""
+    if current_thread() is not main_thread():
+        yield
+        return
+
+    def interrupt(_signum: int, _frame: FrameType | None) -> None:
+        stop.set()
+
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        for sig in previous:
+            signal.signal(sig, interrupt)
+        yield
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
 
 
 def log_error(error_string: str, id: str, output_directory: str) -> None:
@@ -31,33 +57,28 @@ def stable_hash(input_string: str) -> int:
 def poll_submissions(
     url: str,
     queue: SubmissionQueue,
-    stop: Event,
     output_directory: str,
     total_workers: int,
     worker_id: int | None,
-    poll_interval: float,
 ) -> None:
-    """Refresh pending work independently of the foreground encoder."""
+    """Refresh one pending snapshot; retain the previous queue on API failure."""
     directory = Path(output_directory)
-    while not stop.is_set():
-        try:
-            runs = fetch_runs(url)
-            print(f"Fetched {len(runs)} submissions", flush=True)
-            queue.update(
-                [
-                    run
-                    for run in runs
-                    if (
-                        worker_id is None
-                        or stable_hash(run.id) % total_workers == worker_id
-                    )
-                    and not (directory / f"{run.id}.mp4").exists()
-                ]
-            )
-        except Exception:
-            logger.exception("Failed to refresh submissions from %s", url)
-        if stop.wait(poll_interval):
-            return
+    try:
+        runs = fetch_runs(url)
+        queue.update(
+            [
+                run
+                for run in runs
+                if (
+                    worker_id is None
+                    or stable_hash(run.id) % total_workers == worker_id
+                )
+                and not (directory / f"{run.id}.mp4").exists()
+                and not (directory / f"{run.id}.err").exists()
+            ]
+        )
+    except Exception:
+        logger.exception("Failed to refresh submissions from %s", url)
 
 
 def continuous_build_submission(
@@ -72,7 +93,7 @@ def continuous_build_submission(
     preset: str | None = Defaults.preset,
     vaapi_device: str | None = Defaults.vaapi_device,
     vertical: bool = True,
-    total_workers: int = 2,
+    total_workers: int = 1,
     worker_id: int | None = None,
     sound: bool = Defaults.sound,
     hwaccel: str | None = Defaults.hwaccel,
@@ -91,75 +112,87 @@ def continuous_build_submission(
 
     queue = SubmissionQueue()
     stop = Event()
-    poller = Thread(
-        target=poll_submissions,
-        args=(
-            url,
-            queue,
-            stop,
-            output_directory,
-            total_workers,
-            worker_id,
-            poll_interval,
-        ),
-        name="submission-poller",
-        daemon=True,
-    )
 
-    def render_loop() -> None:
-        with tqdm(desc="Rendering submissions", unit="submission") as progress:
-            while not stop.is_set():
-                run = queue.take(timeout=0.5)
-                if run is None:
-                    continue
-                try:
-                    print(f"Starting render: {run.id}", flush=True)
-                    build_submission(
-                        id=run.id,
-                        url=url,
-                        success_audio_path=success_audio_path,
-                        fail_audio_path=fail_audio_path,
-                        output_directory=output_directory,
-                        overwrite=False,
-                        print_progress=False,
-                        vcodec=vcodec,
-                        acodec=acodec,
-                        vertical=vertical,
-                        sound=sound,
-                        hwaccel=hwaccel,
-                        hardware=hardware,
-                        quality=quality,
-                        preset=preset,
-                        vaapi_device=vaapi_device,
-                    )
-                    print(f"Finished render: {run.id}", flush=True)
-                    progress.update(1)
-                except ffmpeg.FFMpegExecuteError as e:
-                    log_error(
-                        os.linesep.join(str(x) for x in (e, e.stdout, e.stderr)),
-                        id=run.id,
-                        output_directory=output_directory,
-                    )
-                except Exception as e:  # noqa: BLE001 - Isolate failed submissions.
-                    log_error(str(e), id=run.id, output_directory=output_directory)
-                finally:
-                    queue.complete(run.id)
+    def render_one(run: RunSummary) -> None:
+        try:
+            build_submission(
+                id=run.id,
+                url=url,
+                success_audio_path=success_audio_path,
+                fail_audio_path=fail_audio_path,
+                output_directory=output_directory,
+                overwrite=False,
+                print_progress=False,
+                vcodec=vcodec,
+                acodec=acodec,
+                vertical=vertical,
+                sound=sound,
+                hwaccel=hwaccel,
+                hardware=hardware,
+                quality=quality,
+                preset=preset,
+                vaapi_device=vaapi_device,
+            )
+        except ffmpeg.FFMpegExecuteError as e:
+            if stop.is_set():
+                return
+            log_error(
+                os.linesep.join(str(x) for x in (e, e.stdout, e.stderr)),
+                id=run.id,
+                output_directory=output_directory,
+            )
+        except Exception as e:  # noqa: BLE001 - Isolate failed submissions.
+            if not stop.is_set():
+                log_error(str(e), id=run.id, output_directory=output_directory)
 
-    poller.start()
-    renderers: list[Thread] = []
-    try:
-        if worker_id is not None or total_workers == 1:
-            render_loop()
-        else:
-            for index in range(total_workers):
-                renderer = Thread(target=render_loop, name=f"renderer-{index}")
-                renderer.start()
-                renderers.append(renderer)
-            while not stop.wait(0.5):
-                pass
-    finally:
-        stop.set()
-        queue.close()
-        poller.join(timeout=1)
+    # An explicit worker ID owns one distributed partition and renders serially.
+    concurrency = total_workers if worker_id is None else 1
+    with (
+        shutdown_signals(stop),
+        logging_redirect_tqdm(),
+        tqdm(
+            total=0, desc="Rendering submissions", unit="submission", dynamic_ncols=True
+        ) as progress,
+        ThreadPoolExecutor(
+            max_workers=concurrency + 1, thread_name_prefix="reaction"
+        ) as executor,
+    ):
+        progress_lock = Lock()
+
+        def render_loop() -> None:
+            try:
+                while not stop.is_set() and (run := queue.take()) is not None:
+                    try:
+                        render_one(run)
+                    finally:
+                        with progress_lock:
+                            queue.complete(run.id)
+                            if not stop.is_set():
+                                progress.total = progress.n + 1 + queue.remaining
+                                progress.update(1)
+            finally:
+                stop.set()
+
+        def poll_loop() -> None:
+            try:
+                while not stop.is_set():
+                    poll_submissions(
+                        url, queue, output_directory, total_workers, worker_id
+                    )
+                    with progress_lock:
+                        progress.total = progress.n + queue.remaining
+                        progress.refresh()
+                    stop.wait(poll_interval)
+            finally:
+                stop.set()
+
+        poller = executor.submit(poll_loop)
+        renderers = [executor.submit(render_loop) for _ in range(concurrency)]
+        try:
+            stop.wait()
+        finally:
+            stop.set()
+            queue.close()
+        poller.result()
         for renderer in renderers:
-            renderer.join()
+            renderer.result()

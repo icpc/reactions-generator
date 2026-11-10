@@ -68,7 +68,7 @@ def try_adding_endline(text: str) -> tuple[bool, str]:
     return True, text[:best_position] + "\n" + text[best_position + 1 :]
 
 
-@functools.cache
+@functools.lru_cache(maxsize=128)
 def auto_resize_text(
     text: str,
     dimensions: Dimensions,

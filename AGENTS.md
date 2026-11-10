@@ -73,13 +73,14 @@ together. Do not hand-edit lockfile package versions or hashes.
   media duration is seconds, and animation positions are frame indices.
 - Geometry helpers use `(left, top, right, bottom)` boxes, while layout defaults
   use `(x, y, width, height)`. Convert deliberately when moving between them.
-- Preserve the custom-font-first, bundled-Nimbus-fallback behavior. Cached fonts
-  and rendered images are reused; copy images before modifying cached results.
+- Preserve the custom-font-first, bundled-Nimbus-fallback behavior. Bounded LRU caches reuse fonts
+  and rendered images; copy images before modifying cached results.
 - For rendering changes, preserve child-process cleanup, temporary-output
   handling, and replacement of the destination only after successful encoding.
 - For overlayer changes, preserve deterministic SHA-256 worker partitioning,
   skipping existing submissions unless overwrite is requested, and per-submission
-  error handling. `all` polls in the background and renders concurrently when
+  error handling. `all` uses a dedicated polling thread; a bounded pool of renderer
+  threads consumes the blocking priority queue when
   `--worker-id` is omitted; an explicit worker ID renders its partition serially.
 - Preserve queue priority: first-to-solve, accepted, then other judged runs, using
   `isFirstToSolve` and `isAccepted` from the live-v3 short-run API. Missing
@@ -87,8 +88,9 @@ together. Do not hand-edit lockfile package versions or hashes.
   refresh waiting priorities on polls, and never preempt an active encode.
 - Keep `IN_PROGRESS` runs out of the render queue until judged. Poll snapshots
   remove vanished waiting runs and deduplicate in-flight work. Poll failures
-  retry after `--poll-interval`; failed renders record `.err` files and may retry
-  on later polls. Use bounded fixtures and synchronization events for queue tests.
+  retry after `--poll-interval`; failed renders record `.err` files and must be
+  skipped on later polls and after restart until the error file is removed.
+  Use bounded fixtures and synchronization events for queue tests.
 
 ## Validation
 
