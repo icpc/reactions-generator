@@ -25,6 +25,7 @@ from reactions_generator.encoding import (
     make_encoder,
     probe_encoder,
 )
+from reactions_generator.nvidia_full import probe_nvidia_full, settings_from_cli
 from reactions_generator.rendering import render_reaction
 
 
@@ -229,10 +230,18 @@ def benchmark(
                 config = make_encoder(
                     backend, quality, preset, vaapi_device=vaapi_device
                 )
-                available, reason = probe_encoder(config)
+                if backend == "nvidia_full":
+                    available, reason = probe_nvidia_full(
+                        webcam_source,
+                        settings_from_cli(quality=quality, preset=preset, vcodec=None),
+                    )
+                else:
+                    available, reason = probe_encoder(config)
             except (ValueError, OSError) as exc:
                 available, reason = False, str(exc)
             if not available:
+                if hardware == "nvidia_full":
+                    raise RuntimeError(f"nvidia_full unavailable: {reason}")
                 results.append(
                     {
                         "hardware": backend,
@@ -246,6 +255,10 @@ def benchmark(
             assert config is not None
             warmup = render_one(backend, temporary / f"warmup-{backend}.mp4")
             if not warmup.ok:
+                if hardware == "nvidia_full":
+                    raise RuntimeError(
+                        f"nvidia_full full-render warm-up failed: {warmup.error}"
+                    )
                 results.append(
                     {
                         "hardware": backend,

@@ -43,33 +43,76 @@ class BenchmarkTests(unittest.TestCase):
         def fake_render(**kwargs: object) -> None:
             Path(str(kwargs["output_path"])).write_bytes(b"encoded")
 
-        with tempfile.TemporaryDirectory() as directory:
-            with (
-                patch.object(benchmark_module.Path, "is_file", return_value=True),
-                patch.object(
-                    benchmark_module, "probe_encoder", return_value=(True, "ok")
-                ),
-                patch.object(
-                    benchmark_module, "render_reaction", side_effect=fake_render
-                ) as render,
-                patch.object(benchmark_module, "inspect_output", return_value=8.0),
-                patch.object(
-                    benchmark_module.subprocess,
-                    "run",
-                    return_value=Mock(stdout="ffmpeg version test\n"),
-                ),
-            ):
-                benchmark_module.benchmark("cpu", "1,2", output_directory=directory)
-            self.assertEqual(
-                render.call_count, 1 + 2 + 2
-            )  # warm-up and two complete batches
+        for backend in ("cpu", "nvidia_full"):
+            with tempfile.TemporaryDirectory() as directory:
+                with (
+                    patch.object(benchmark_module.Path, "is_file", return_value=True),
+                    patch.object(
+                        benchmark_module, "probe_nvidia_full", return_value=(True, "ok")
+                    ),
+                    patch.object(
+                        benchmark_module, "probe_encoder", return_value=(True, "ok")
+                    ),
+                    patch.object(
+                        benchmark_module, "render_reaction", side_effect=fake_render
+                    ) as render,
+                    patch.object(benchmark_module, "inspect_output", return_value=8.0),
+                    patch.object(
+                        benchmark_module.subprocess,
+                        "run",
+                        return_value=Mock(stdout="ffmpeg version test\n"),
+                    ),
+                ):
+                    benchmark_module.benchmark(
+                        backend, "1,2", output_directory=directory
+                    )
+                self.assertEqual(
+                    render.call_count, 1 + 2 + 2
+                )  # warm-up and two complete batches
+                report = json.loads(Path(directory, "results.json").read_text())
+                self.assertEqual([r["workers"] for r in report["results"]], [1, 2])
+                self.assertTrue(all(r["successful"] == 2 for r in report["results"]))
+                self.assertIsNotNone(report["recommended"])
+                self.assertTrue(
+                    all(
+                        call.kwargs["hardware"] == backend
+                        for call in render.call_args_list
+                    )
+                )
+                self.assertEqual(
+                    sorted(p.name for p in Path(directory).iterdir()), ["results.json"]
+                )
+
+    def test_full_cuda_unavailable_explicit_fails_and_all_skips(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(benchmark_module.Path, "is_file", return_value=True),
+            patch.object(
+                benchmark_module,
+                "probe_nvidia_full",
+                return_value=(False, "CUDA missing"),
+            ) as probe,
+            patch.object(
+                benchmark_module, "probe_encoder", return_value=(False, "unavailable")
+            ),
+            patch.object(
+                benchmark_module.subprocess,
+                "run",
+                return_value=Mock(stdout="ffmpeg test"),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "CUDA missing"):
+                benchmark_module.benchmark(
+                    "nvidia_full", "1", output_directory=directory
+                )
+            benchmark_module.benchmark("all", "1", output_directory=directory)
             report = json.loads(Path(directory, "results.json").read_text())
-            self.assertEqual([r["workers"] for r in report["results"]], [1, 2])
-            self.assertTrue(all(r["successful"] == 2 for r in report["results"]))
-            self.assertIsNotNone(report["recommended"])
-            self.assertEqual(
-                sorted(p.name for p in Path(directory).iterdir()), ["results.json"]
+            row = next(
+                row for row in report["results"] if row["hardware"] == "nvidia_full"
             )
+            self.assertEqual(row["status"], "skipped")
+            self.assertEqual(row["reason"], "CUDA missing")
+            self.assertEqual(probe.call_count, 2)
 
     def test_unavailable_encoder_is_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

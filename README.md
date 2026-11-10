@@ -124,12 +124,14 @@ CPU H.264 encoding is the safe default: `libx264 -preset veryfast -crf 23`.
 Hardware acceleration is **opt-in**; there is no automatic GPU selection or
 silent fallback. Select a backend explicitly with `--hardware`. `--hwaccel`
 controls input decoding separately and is not enabled automatically because
-scaling and composition currently use software FFmpeg filters.
+scaling and composition use software FFmpeg filters in the existing profiles.
+The opt-in `nvidia_full` profile below manages CUDA decoding and composition itself.
 
 | Platform | `--hardware` | Encoder | Default speed setting |
 | --- | --- | --- | --- |
 | CPU-only (any OS) | `cpu` (default) | `libx264` | `veryfast` |
 | NVIDIA (Linux/Windows) | `nvidia` | `h264_nvenc` | `p3` |
+| NVIDIA CUDA composition | `nvidia_full` | `h264_nvenc` | `p5` |
 | Intel iGPU (Linux/Windows) | `intel` | `h264_qsv` | `veryfast` |
 | AMD (Windows / supported Linux drivers) | `amd` | `h264_amf` | `speed` |
 | Intel/AMD Linux via VAAPI | `vaapi` | `h264_vaapi` | driver-controlled |
@@ -150,7 +152,8 @@ encoders; Apple VideoToolbox uses a reversed quality direction.
 
 Quality controls output fidelity/file size; `--preset` controls compression
 speed/efficiency and is validated for the selected backend. `--vcodec` is an
-advanced explicit encoder override, incompatible with non-CPU `--hardware`.
+advanced explicit encoder override, incompatible with non-CPU `--hardware`
+except that `nvidia_full` also accepts an explicit `--vcodec h264_nvenc`.
 Unknown custom encoders are passed through without automatic quality mapping.
 
 ```sh
@@ -184,3 +187,46 @@ the NVIDIA container runtime; VAAPI in Linux containers requires accessible
 `/dev/dri/renderD*` devices and compatible drivers. The standard CPU Docker
 image continues to work without GPUs. A compiled-in encoder is not proof that
 the hardware or driver will accept encoding: use `benchmark` to verify.
+
+
+### NVIDIA full-CUDA renderer
+
+`--hardware nvidia_full` is an opt-in path for machines with an NVIDIA GPU and
+CUDA-capable FFmpeg. It is distinct from `--hardware nvidia` (the regular NVIDIA
+encoding profile): `nvidia_full` decodes moving webcam/screen video into CUDA
+frames, resizes with `scale_cuda`, composites with `overlay_cuda`, and encodes
+with `h264_nvenc`. The full canvas never round-trips through Python/CPU.
+Pillow still generates the small RGBA animated card; FFmpeg converts/uploads
+that card with YUVA420P alpha and mixes audio on CPU.
+
+```bash
+main reaction --hardware nvidia_full
+main reaction --hardware nvidia_full --quality high --preset p5
+main single OVERLAYER_URL RUN_ID --hardware nvidia_full
+main all OVERLAYER_URL --hardware nvidia_full --total-workers 1
+main benchmark --hardware all --worker-counts 1,2,4,8
+```
+
+Default `nvidia_full` encoder is H.264 NVENC with preset P5, HQ tuning, VBR,
+CQ 23, and two B-frames. The initial quality mapping is low = CQ 29,
+balanced (also accepted as medium) = CQ 23, high = CQ 19; these numbers are NVENC-specific and not x264
+CRF values. Explicit NVENC presets are `p1` through `p7`.
+
+Check `nvidia-smi`, `ffmpeg -encoders | grep h264_nvenc`, and
+`ffmpeg -filters | grep -E 'scale_cuda|overlay_cuda|hwupload'`. Actual rendering
+still needs a compatible driver, runtime, and input codec. The generic Dockerfile
+and any plain Debian `ffmpeg` package cannot be assumed to work on the GPU.
+For NVIDIA Docker execution, arrange a CUDA/NVENC-compatible FFmpeg build and
+NVIDIA Container Toolkit GPU access. Explicit `nvidia_full` fails rather than
+silently falling back to software rendering.
+
+Start by benchmarking 1, 2 and 4 workers on your actual GPU and also test 8
+workers if VRAM/session capacity allows. CUDA visual equivalence and throughput
+must be confirmed on the real target GPU; they were not tested on the authoring
+machine.
+
+The standalone `card` command uses this profile’s NVENC settings with software
+card input; CUDA composition applies to reaction renders.
+
+Implementation references: [FFmpeg CUDA overlay](https://ffmpeg.org/doxygen/trunk/vf__overlay__cuda_8c_source.html)
+and the [NVIDIA FFmpeg guide](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/ffmpeg-with-nvidia-gpu/).

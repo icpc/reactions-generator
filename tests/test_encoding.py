@@ -25,6 +25,7 @@ class EncodingTests(unittest.TestCase):
                     key = {
                         "cpu": "crf",
                         "nvidia": "cq",
+                        "nvidia_full": "cq",
                         "intel": "global_quality",
                         "amd": "qp_i",
                         "apple": "q:v",

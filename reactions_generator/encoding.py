@@ -11,20 +11,26 @@ from typing import Any, cast
 
 import ffmpeg
 
+from reactions_generator.nvidia_full import settings_from_cli
+
 logger = logging.getLogger(__name__)
 
 CODECS = {
     "cpu": "libx264",
     "nvidia": "h264_nvenc",
+    "nvidia_full": "h264_nvenc",
     "intel": "h264_qsv",
     "amd": "h264_amf",
     "apple": "h264_videotoolbox",
     "vaapi": "h264_vaapi",
 }
-BACKENDS = {codec: backend for backend, codec in CODECS.items()}
+BACKENDS = {
+    codec: backend for backend, codec in CODECS.items() if backend != "nvidia_full"
+}
 QUALITY = {
     "cpu": {"low": 26, "balanced": 23, "high": 18},
     "nvidia": {"low": 27, "balanced": 24, "high": 19},
+    "nvidia_full": {"low": 29, "balanced": 23, "high": 19},
     "intel": {"low": 27, "balanced": 24, "high": 19},
     "amd": {"low": 27, "balanced": 24, "high": 19},
     "apple": {"low": 45, "balanced": 60, "high": 75},
@@ -88,6 +94,23 @@ def make_encoder(
     """Resolve an explicitly chosen encoder and its quality/speed parameters."""
     if hardware not in CODECS:
         raise ValueError(f"Unknown --hardware {hardware!r}; choose {', '.join(CODECS)}")
+    if hardware == "nvidia_full":
+        if vaapi_device is not None:
+            raise ValueError("--vaapi-device requires --hardware vaapi")
+        settings = settings_from_cli(quality=quality, preset=preset, vcodec=vcodec)
+        return EncoderConfig(
+            hardware,
+            CODECS[hardware],
+            {
+                "rc": "vbr",
+                "cq": settings.cq,
+                "b:v": "0",
+                "preset": settings.preset,
+                "tune": "hq",
+                "bf": 2,
+            },
+            "yuv420p",
+        )
     if quality not in {"low", "balanced", "high"}:
         raise ValueError("--quality must be low, balanced, or high")
     if vcodec is not None and hardware != "cpu":

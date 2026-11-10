@@ -21,7 +21,10 @@ Read the files relevant to the task:
 - `reactions_generator/cli.py`: registration of Typer commands (`card`,
   `reaction`, `single`, `all`) and the CLI entry point.
 - `reactions_generator/media.py`: image loading and media metadata probing.
-- `reactions_generator/rendering.py`: FFmpeg composition and card video encoding.
+- `reactions_generator/rendering.py`: FFmpeg composition, shared process runner,
+  persistent logs, and atomic output replacement.
+- `reactions_generator/nvidia_full.py`: explicit CUDA decode/scale/overlay/NVENC
+  command construction and runtime capability probing.
 - `reactions_generator/overlayer.py`: typed submission parsing, API requests, and
   rendering of individual submissions.
 - `reactions_generator/worker.py`: polling, deterministic partitioning, and
