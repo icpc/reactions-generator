@@ -155,8 +155,14 @@ poetry run main benchmark --hardware all --worker-counts 1,2,4,8
 ```
 
 `benchmark` performs a short capability probe, then full application renders
-(card generation, decoding, scaling, overlays, audio, encoding) using the local
-sample media for each working backend and each requested worker count. It
+(card generation, decoding, scaling, overlays, audio, encoding) using five-second clips from the local
+sample media for each working backend and each requested worker count. Clips are
+prepared once using stream copying, preserving source codecs. Preparation is
+excluded from timing. Each batch renders `max(worker_counts)` videos by default,
+so every worker count processes the same workload. For a longer measurement use
+`--duration-seconds 15 --jobs-per-worker 2 --repetitions 3`. Stream-copy boundaries
+can make clip duration slightly exceed the requested limit. Short benchmarks are
+useful for a quick comparison; confirm close results with longer runs. It
 writes a JSON report to `out/benchmarks/results.json`; it cleans temporary
 videos and never touches production output. The fastest successful combination
 is recommended based on completed videos per second, not guaranteed equivalent

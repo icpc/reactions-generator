@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import platform
 import statistics
@@ -103,6 +104,38 @@ def inspect_output(path: Path, expect_audio: bool = True) -> float:
     return duration
 
 
+def prepare_clip(source: str, destination: Path, duration: float) -> str:
+    """Copy a short sample without changing the input codecs being benchmarked."""
+    if Path(source).suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+        return source
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-nostdin",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            source,
+            "-t",
+            str(duration),
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a?",
+            "-c",
+            "copy",
+            str(destination),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+    return str(destination)
+
+
 def benchmark(
     hardware: str = "all",
     worker_counts: str = "1,2,4",
@@ -114,6 +147,8 @@ def benchmark(
     background_source: str = Defaults.background_source,
     preset: str | None = None,
     vaapi_device: str | None = None,
+    duration_seconds: float = 5.0,
+    jobs_per_worker: int = 1,
 ) -> None:
     """Measure whole-video throughput at fixed nominal quality."""
     if hardware not in {*CODECS, "all"}:
@@ -122,6 +157,10 @@ def benchmark(
         raise ValueError("--repetitions must be >= 1")
     if hardware == "all" and preset is not None:
         raise ValueError("--preset with --hardware all is ambiguous")
+    if not math.isfinite(duration_seconds) or duration_seconds <= 0:
+        raise ValueError("--duration-seconds must be finite and positive")
+    if jobs_per_worker < 1:
+        raise ValueError("--jobs-per-worker must be >= 1")
     counts = parse_worker_counts(worker_counts)
     for filename in [
         webcam_source,
@@ -136,7 +175,7 @@ def benchmark(
     destination = Path(output_directory)
     destination.mkdir(parents=True, exist_ok=True)
     candidates = list(CODECS) if hardware == "all" else [hardware]
-    jobs = max(8, 2 * max(counts))
+    jobs = jobs_per_worker * max(counts)
     results: list[BenchmarkResult] = []
 
     def render_one(backend: str, job_path: Path) -> RenderSample:
@@ -177,6 +216,13 @@ def benchmark(
 
     with tempfile.TemporaryDirectory(prefix="renders-", dir=destination) as tmp:
         temporary = Path(tmp)
+        # Preparation is performed once and excluded from all timed batches.
+        webcam_source = prepare_clip(
+            webcam_source, temporary / "webcam.mkv", duration_seconds
+        )
+        screen_source = prepare_clip(
+            screen_source, temporary / "screen.mkv", duration_seconds
+        )
         for backend in candidates:
             config: EncoderConfig | None = None
             try:
@@ -293,6 +339,8 @@ def benchmark(
         if version.stdout
         else "unknown",
         "jobs_per_run": jobs,
+        "requested_duration_seconds": duration_seconds,
+        "jobs_per_worker": jobs_per_worker,
         "results": results,
         "recommended": best,
         "warning": "Nominal quality settings are not equal perceptual quality across encoders.",
