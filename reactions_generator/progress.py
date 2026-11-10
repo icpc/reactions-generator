@@ -10,10 +10,7 @@ from rich.progress import (
     Progress,
     ProgressColumn,
     Task,
-    TaskProgressColumn,
     TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
 )
 from rich.text import Text
 
@@ -22,8 +19,31 @@ class SpeedColumn(ProgressColumn):
     def render(self, task: Task) -> Text:
         speed = task.finished_speed or task.speed
         if not speed or speed <= 0:
-            return Text("-- submissions/s", style="dim")
-        return Text(f"{speed:.2f} submissions/s", style="cyan")
+            return Text("--/s", style="dim")
+        return Text(f"{speed:.1f}/s", style="cyan")
+
+
+def compact_time(seconds: float | None) -> str:
+    if seconds is None:
+        return "--"
+    whole_seconds = max(0, int(seconds))
+    minutes, seconds = divmod(whole_seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h{minutes:02}m"
+    if minutes:
+        return f"{minutes}m{seconds:02}s"
+    return f"{seconds}s"
+
+
+class ElapsedColumn(ProgressColumn):
+    def render(self, task: Task) -> Text:
+        return Text(compact_time(task.elapsed), style="dim")
+
+
+class RemainingColumn(ProgressColumn):
+    def render(self, task: Task) -> Text:
+        return Text(f"ETA {compact_time(task.time_remaining)}", style="dim")
 
 
 class FailedColumn(ProgressColumn):
@@ -42,14 +62,10 @@ class RenderProgress(Progress):
         )
         super().__init__(
             TextColumn("[bold]{task.description}"),
-            BarColumn(bar_width=28, complete_style="blue", finished_style="green"),
-            TaskProgressColumn(),
+            BarColumn(bar_width=16, complete_style="blue", finished_style="green"),
             MofNCompleteColumn(),
-            TextColumn("[dim]["),
-            TimeElapsedColumn(),
-            TextColumn("[dim]<"),
-            TimeRemainingColumn(),
-            TextColumn("[dim],"),
+            ElapsedColumn(),
+            RemainingColumn(),
             SpeedColumn(),
             TextColumn("[dim]]"),
             FailedColumn(),
@@ -84,7 +100,7 @@ class RenderProgress(Progress):
             if now >= self._next_report or (succeeded is not None and remaining == 0):
                 task = self.tasks[0]
                 speed = task.finished_speed or task.speed
-                rate = f"{speed:.2f} submissions/s" if speed else "-- submissions/s"
+                rate = f"{speed:.1f}/s" if speed else "--/s"
                 self.console.print(
                     f"Rendering submissions: {self._processed}/{total} processed, "
                     f"{self._failed} failed, {remaining} remaining, {rate}",
