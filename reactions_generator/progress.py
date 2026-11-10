@@ -71,8 +71,7 @@ class RenderProgress(Progress):
             FailedColumn(),
             console=console,
             disable=plain,
-            auto_refresh=True,
-            refresh_per_second=5,
+            auto_refresh=False,
             get_time=monotonic,
         )
         self._task_id = self.add_task("Rendering submissions", total=0, failed=0)
