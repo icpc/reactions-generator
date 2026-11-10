@@ -113,6 +113,13 @@ entries for reuse without growing indefinitely. The bounds count entries, not by
 
 ## Encoding and performance
 
+Every FFmpeg render writes an info-level report to
+`out/logs/<output-name>-<unique-id>.log`, including successful and interrupted
+renders. Reports include FFmpeg's command, stream information, warnings, and
+encoding statistics. Logs are retained separately from temporary output videos;
+concurrent renders and retries use different filenames. Console progress behavior
+is unchanged.
+
 CPU H.264 encoding is the safe default: `libx264 -preset veryfast -crf 23`.
 Hardware acceleration is **opt-in**; there is no automatic GPU selection or
 silent fallback. Select a backend explicitly with `--hardware`. `--hwaccel`

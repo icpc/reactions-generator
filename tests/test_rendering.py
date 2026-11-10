@@ -130,8 +130,10 @@ class RenderingTests(unittest.TestCase):
             process.returncode = returncode
             card = Mock(spec=Card)
             card.render_frame.return_value = Image.new("RGBA", (2, 2), "white")
+            reports: list[str] = []
 
             def start(command: list[str], **kwargs: object) -> Mock:
+                reports.append(cast(dict[str, str], kwargs["env"])["FFREPORT"])
                 Path(command[-1]).write_bytes(b"new video")
                 stderr = kwargs.get("stderr")
                 if isinstance(stderr, io.BufferedIOBase):
@@ -170,6 +172,9 @@ class RenderingTests(unittest.TestCase):
             )
             self.assertEqual(stat.S_IMODE(output.stat().st_mode), expected_mode)
             self.assertEqual(list(Path(directory).iterdir()), [output])
+            self.assertEqual(len(reports), 1)
+            self.assertTrue(reports[0].startswith("file=out/logs/result-"))
+            self.assertTrue(reports[0].endswith(".log:level=32"))
             self.assertTrue(process.stdin.closed)
             process.terminate.assert_not_called()
             register.assert_called_once()

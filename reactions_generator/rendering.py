@@ -4,9 +4,11 @@ import atexit
 import logging
 import math
 import os
+import re
 import stat
 import subprocess
 import tempfile
+import uuid
 from collections.abc import Sequence
 from contextlib import suppress
 from pathlib import Path
@@ -74,12 +76,17 @@ def render(
         )
         command = graph.compile(auto_fix=False)
         command = [command[0], *encoder.device_args(), *command[1:]]
+        log_directory = Path("out/logs")
+        log_directory.mkdir(parents=True, exist_ok=True)
+        log_stem = re.sub(r"[^a-zA-Z0-9_.-]", "_", output.stem)
+        log_path = log_directory / f"{log_stem}-{uuid.uuid4().hex}.log"
         # A file can capture arbitrary diagnostics without filling a stderr pipe.
         with tempfile.TemporaryFile() as errors:
             process: subprocess.Popen[bytes] = subprocess.Popen(
                 command,
                 stdin=subprocess.PIPE,
                 stderr=None if print_progress else errors,
+                env={**os.environ, "FFREPORT": f"file={log_path.as_posix()}:level=32"},
             )
 
             def clean_up() -> None:
