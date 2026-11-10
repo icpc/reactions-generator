@@ -108,6 +108,11 @@ def continuous_build_submission(
         )
     if not math.isfinite(poll_interval) or poll_interval <= 0:
         raise ValueError("Poll interval must be a positive finite number")
+    print(
+        f"Starting worker: hardware={hardware}, "
+        f"total_workers={total_workers}, worker_id={worker_id}",
+        flush=True,
+    )
     os.makedirs(output_directory, exist_ok=True)
 
     queue = SubmissionQueue()
