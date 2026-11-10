@@ -1,4 +1,4 @@
-"""Render progress for interactive terminals and line-based logs."""
+"""Submission progress for terminal sessions and Docker logs."""
 
 import os
 from time import monotonic
@@ -10,27 +10,30 @@ from rich.progress import (
     Progress,
     ProgressColumn,
     Task,
+    TaskProgressColumn,
     TextColumn,
+    TimeElapsedColumn,
     TimeRemainingColumn,
 )
 from rich.text import Text
 
 
-def format_rate(task: Task) -> str:
-    """Show Rich's recent rate, with a session average until two samples exist."""
-    speed = task.speed
-    if speed is None and task.completed and (elapsed := task.elapsed):
-        speed = task.completed / elapsed
-    return f"{speed:.2f} submissions/s" if speed is not None else "-- submissions/s"
-
-
-class RenderRateColumn(ProgressColumn):
+class SpeedColumn(ProgressColumn):
     def render(self, task: Task) -> Text:
-        return Text(format_rate(task))
+        speed = task.finished_speed or task.speed
+        if not speed or speed <= 0:
+            return Text("-- submissions/s", style="dim")
+        return Text(f"{speed:.2f} submissions/s", style="cyan")
+
+
+class FailedColumn(ProgressColumn):
+    def render(self, task: Task) -> Text:
+        failed = task.fields.get("failed", 0)
+        return Text(f"✗ {failed}", style="bold red") if failed else Text("")
 
 
 class RenderProgress(Progress):
-    """Display one live task or report its progress periodically in logs."""
+    """Show a Rich bar in terminals and periodic newline summaries in logs."""
 
     def __init__(self, console: Console | None = None) -> None:
         console = console if console is not None else Console(stderr=True)
@@ -38,15 +41,22 @@ class RenderProgress(Progress):
             not console.is_terminal or os.environ.get("REACTIONS_PROGRESS") == "plain"
         )
         super().__init__(
-            TextColumn("{task.description}"),
-            BarColumn(),
+            TextColumn("[bold]{task.description}"),
+            BarColumn(bar_width=28, complete_style="blue", finished_style="green"),
+            TaskProgressColumn(),
             MofNCompleteColumn(),
-            TextColumn("{task.fields[failed]} failed"),
-            RenderRateColumn(),
+            TextColumn("[dim]["),
+            TimeElapsedColumn(),
+            TextColumn("[dim]<"),
             TimeRemainingColumn(),
+            TextColumn("[dim],"),
+            SpeedColumn(),
+            TextColumn("[dim]]"),
+            FailedColumn(),
             console=console,
             disable=plain,
-            auto_refresh=False,
+            auto_refresh=True,
+            refresh_per_second=5,
             get_time=monotonic,
         )
         self._task_id = self.add_task("Rendering submissions", total=0, failed=0)
@@ -55,7 +65,6 @@ class RenderProgress(Progress):
         self._next_report = 0.0
 
     def report(self, remaining: int, *, succeeded: bool | None = None) -> None:
-        """Update the queue snapshot and optionally count a completed attempt."""
         if succeeded is not None:
             self._processed += 1
             if not succeeded:
@@ -73,10 +82,12 @@ class RenderProgress(Progress):
         if self.disable:
             now = monotonic()
             if now >= self._next_report or (succeeded is not None and remaining == 0):
+                task = self.tasks[0]
+                speed = task.finished_speed or task.speed
+                rate = f"{speed:.2f} submissions/s" if speed else "-- submissions/s"
                 self.console.print(
                     f"Rendering submissions: {self._processed}/{total} processed, "
-                    f"{self._failed} failed, {remaining} remaining, "
-                    f"{format_rate(self.tasks[0])}",
+                    f"{self._failed} failed, {remaining} remaining, {rate}",
                     highlight=False,
                     soft_wrap=True,
                 )
