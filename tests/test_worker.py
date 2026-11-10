@@ -1,12 +1,16 @@
 import tempfile
 import unittest
 from collections.abc import Sequence
+from io import StringIO
 from pathlib import Path
 from threading import Event, Thread
 from unittest.mock import Mock, patch
 
+from rich.console import Console
+
 from reactions_generator import worker
 from reactions_generator.overlayer import RunSummary
+from reactions_generator.progress import RenderProgress
 from reactions_generator.scheduler import SubmissionQueue
 
 
@@ -55,16 +59,13 @@ class WorkerTests(unittest.TestCase):
         queue = SubmissionQueue()
         queue.update([RunSummary("good"), RunSummary("bad")])
         finished = Event()
-        progress = Mock(n=0)
-        progress.__enter__ = Mock(return_value=progress)
-        progress.__exit__ = Mock(return_value=False)
+        progress = RenderProgress(Console(file=StringIO(), force_terminal=False))
+        report_progress = progress.report
 
-        def update(count: int) -> None:
-            progress.n += count
-            if progress.n == 2:
+        def report(remaining: int, *, succeeded: bool | None = None) -> None:
+            report_progress(remaining, succeeded=succeeded)
+            if progress.tasks[0].completed == 2:
                 finished.set()
-
-        progress.update.side_effect = update
 
         def build(*, id: str, **_kwargs: object) -> None:
             if id == "bad":
@@ -79,15 +80,43 @@ class WorkerTests(unittest.TestCase):
             patch.object(worker, "SubmissionQueue", return_value=queue),
             patch.object(worker, "poll_submissions", side_effect=poll),
             patch.object(worker, "build_submission", side_effect=build),
-            patch.object(worker, "tqdm", return_value=progress),
+            patch.object(worker, "RenderProgress", return_value=progress),
+            patch.object(progress, "report", side_effect=report),
             self.assertLogs(worker.logger, level="ERROR"),
             self.assertRaises(KeyboardInterrupt),
         ):
             worker.continuous_build_submission(
                 "https://example.com", output_directory=directory
             )
-        self.assertEqual(progress.n, 2)
-        self.assertEqual(progress.total, 2)
+        self.assertEqual(progress.tasks[0].completed, 2)
+        self.assertEqual(progress.tasks[0].total, 2)
+        self.assertEqual(progress.tasks[0].fields["failed"], 1)
+
+    def test_plain_progress_reports_periodically_and_when_queue_drains(self) -> None:
+        output = StringIO()
+        console = Console(file=output, force_terminal=True, no_color=True)
+        with (
+            patch.dict("os.environ", {"REACTIONS_PROGRESS": "plain"}),
+            patch("reactions_generator.progress.monotonic", return_value=0) as clock,
+            RenderProgress(console) as progress,
+        ):
+            progress.report(2)
+            clock.return_value = 5
+            progress.report(1, succeeded=True)
+            clock.return_value = 31
+            progress.report(1)
+            clock.return_value = 32
+            progress.report(0, succeeded=False)
+
+        self.assertNotIn("\r", output.getvalue())
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            [
+                "Rendering submissions: 0/2 processed, 0 failed, 2 remaining, -- submissions/s",
+                "Rendering submissions: 1/2 processed, 0 failed, 1 remaining, 0.03 submissions/s",
+                "Rendering submissions: 2/2 processed, 1 failed, 0 remaining, 0.04 submissions/s",
+            ],
+        )
 
     def test_shutdown_does_not_record_interrupted_render_as_failure(self) -> None:
         stop = Event()
@@ -112,7 +141,7 @@ class WorkerTests(unittest.TestCase):
             patch.object(worker, "SubmissionQueue", return_value=queue),
             patch.object(worker, "poll_submissions", side_effect=poll),
             patch.object(worker, "build_submission", side_effect=build) as render,
-            patch.object(worker, "tqdm"),
+            patch.object(worker, "RenderProgress"),
             patch.object(worker, "log_error") as log_error,
             self.assertRaises(KeyboardInterrupt),
         ):
@@ -212,7 +241,7 @@ class WorkerTests(unittest.TestCase):
             with (
                 patch.object(worker, "SubmissionQueue", return_value=queue),
                 patch.object(worker, "poll_submissions"),
-                patch.object(worker, "tqdm"),
+                patch.object(worker, "RenderProgress"),
                 patch.object(
                     worker,
                     "build_submission",
@@ -250,7 +279,7 @@ class WorkerTests(unittest.TestCase):
             with (
                 patch.object(worker, "fetch_runs", return_value=runs),
                 patch.object(worker, "build_submission", side_effect=build),
-                patch.object(worker, "tqdm"),
+                patch.object(worker, "RenderProgress"),
             ):
                 runner = Thread(
                     target=run_until_interrupt,
@@ -299,7 +328,7 @@ class WorkerTests(unittest.TestCase):
             patch.object(worker, "SubmissionQueue", return_value=queue),
             patch.object(worker, "poll_submissions"),
             patch.object(worker, "build_submission", side_effect=build),
-            patch.object(worker, "tqdm") as progress,
+            patch.object(worker, "RenderProgress") as progress,
         ):
             runner = Thread(
                 target=run_until_interrupt,
@@ -324,13 +353,7 @@ class WorkerTests(unittest.TestCase):
                 release_slow.set()
                 runner.join(3)
             self.assertFalse(runner.is_alive())
-            progress.assert_called_once_with(
-                total=0,
-                desc="Rendering submissions",
-                unit="submission",
-                dynamic_ncols=True,
-                disable=None,
-            )
+            progress.assert_called_once_with()
         self.assertCountEqual(rendered, ["slow", "fast", "priority"])
 
     def test_new_first_to_solve_arrives_during_render_and_runs_next(self) -> None:
@@ -388,7 +411,7 @@ class WorkerTests(unittest.TestCase):
                     patch.object(worker, "SubmissionQueue", ObservedQueue),
                     patch.object(worker, "fetch_runs", side_effect=fetch),
                     patch.object(worker, "build_submission", side_effect=build),
-                    patch.object(worker, "tqdm"),
+                    patch.object(worker, "RenderProgress"),
                     self.assertRaises(KeyboardInterrupt),
                 ):
                     worker.continuous_build_submission(

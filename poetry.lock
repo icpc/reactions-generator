@@ -597,27 +597,6 @@ files = [
 ]
 
 [[package]]
-name = "tqdm"
-version = "4.70.1"
-description = "Fast, Extensible Progress Meter"
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73"},
-    {file = "tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4"},
-]
-
-[package.dependencies]
-colorama = {version = "*", markers = "platform_system == \"Windows\""}
-
-[package.extras]
-discord = ["envwrap", "requests"]
-notebook = ["ipywidgets (>=6)"]
-slack = ["envwrap", "slack-sdk"]
-telegram = ["envwrap", "requests"]
-
-[[package]]
 name = "typed-ffmpeg"
 version = "4.6.2"
 description = "Modern Python & TypeScript FFmpeg wrappers with comprehensive typing (latest version)"
@@ -706,4 +685,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "2e92dab4a4c6d65ba6871a3b1e7b4714a42030adbbd1f55e44d6ac38feebedcc"
+content-hash = "af83daa65722dc8a4ccf8f32b9d4bef630108c294c00cd023663a165193cd85d"

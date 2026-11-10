@@ -27,8 +27,9 @@ poetry run main all https://overlayer.example --poll-interval 2
 video at a time by default. Set `--total-workers` to control local concurrency.
 A fixed pool of renderer threads takes videos from the priority queue. Each
 renderer finishes its video before taking the highest-priority waiting submission.
-Renderers share one progress bar showing processed submissions out of the current
-total, including failed attempts. New eligible submissions increase the total;
+Renderers share one Rich progress bar showing processed submissions, the current
+total, failed attempts, submissions per second, and estimated time remaining.
+New eligible submissions increase the total;
 vanished waiting submissions decrease it. Each render prints a start message and,
 on success, a finish message on separate lines without disrupting the bar.
 When `--worker-id` is supplied, this process renders one partition and
@@ -66,23 +67,23 @@ from the API and existing output files after restart.
 
 ## Dev setup
 
-For the live progress bar in Docker Compose, use the service's terminal directly:
+Docker Compose defaults to plain progress output. The worker prints a summary
+on the first poll, every 30 seconds, and when the queue drains. Follow
+those summaries and the per-render messages with `docker compose logs -f reactions`.
+The Compose command must run `all ...` to show submission progress.
+
+To view the live bar in the service's terminal, select automatic progress mode
+when recreating the container and attach directly.
 
 ```sh
-docker compose up -d --force-recreate
+REACTIONS_PROGRESS=auto docker compose up -d --force-recreate
 docker compose attach reactions
 ```
 
-The Compose service enables `tty` and `stdin_open`. Attaching directly avoids
-Compose's log prefixes interfering with the bar. Use Ctrl+P, Ctrl+Q to detach
-without stopping the worker; Ctrl+C requests shutdown. The configured service
-command must be `all ...` to show the submission progress bar (the example Compose
-file runs `card`). `docker compose logs -f` is a log viewer, not the interactive
-progress display. When stderr is not a terminal, the application disables the
-live bar to avoid carriage-return output in logs.
-
-Compose runs the published image, so Python source changes require an updated
-image. Terminal settings take effect when the container is recreated.
+Use Ctrl+P, Ctrl+Q to detach. Ctrl+C requests shutdown. Outside Compose, Rich
+uses the live bar when stderr is a terminal. Set `REACTIONS_PROGRESS=plain` to
+force periodic summaries. Compose runs the published image, so this behavior
+requires an updated image.
 
 Poetry manages dependencies, Ruff checks formatting, and Pyright checks types.
 Run the same validation as GitHub Actions:
