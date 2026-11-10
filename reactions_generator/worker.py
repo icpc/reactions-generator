@@ -156,7 +156,11 @@ def continuous_build_submission(
         shutdown_signals(stop),
         logging_redirect_tqdm(),
         tqdm(
-            total=0, desc="Rendering submissions", unit="submission", dynamic_ncols=True
+            total=0,
+            desc="Rendering submissions",
+            unit="submission",
+            dynamic_ncols=True,
+            disable=None,
         ) as progress,
         ThreadPoolExecutor(
             max_workers=concurrency + 1, thread_name_prefix="reaction"

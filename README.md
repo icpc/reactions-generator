@@ -65,6 +65,24 @@ from the API and existing output files after restart.
 
 ## Dev setup
 
+For the live progress bar in Docker Compose, use the service's terminal directly:
+
+```sh
+docker compose up -d --force-recreate
+docker compose attach reactions
+```
+
+The Compose service enables `tty` and `stdin_open`. Attaching directly avoids
+Compose's log prefixes interfering with the bar. Use Ctrl+P, Ctrl+Q to detach
+without stopping the worker; Ctrl+C requests shutdown. The configured service
+command must be `all ...` to show the submission progress bar (the example Compose
+file runs `card`). `docker compose logs -f` is a log viewer, not the interactive
+progress display. When stderr is not a terminal, the application disables the
+live bar to avoid carriage-return output in logs.
+
+Compose runs the published image, so Python source changes require an updated
+image. Terminal settings take effect when the container is recreated.
+
 Poetry manages dependencies, Ruff checks formatting, and Pyright checks types.
 Run the same validation as GitHub Actions:
 

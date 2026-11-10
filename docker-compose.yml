@@ -5,6 +5,8 @@ services:
     # Replace <owner>/<repo> if running locally before publishing
     image: ghcr.io/icpc/reactions-generator:latest
     container_name: reactions-generator
+    tty: true
+    stdin_open: true
     volumes:
       - ./out:/app/out
       - ./fonts:/app/fonts:ro

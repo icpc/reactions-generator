@@ -329,6 +329,7 @@ class WorkerTests(unittest.TestCase):
                 desc="Rendering submissions",
                 unit="submission",
                 dynamic_ncols=True,
+                disable=None,
             )
         self.assertCountEqual(rendered, ["slow", "fast", "priority"])
 
