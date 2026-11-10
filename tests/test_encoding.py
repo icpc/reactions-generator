@@ -2,10 +2,34 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from reactions_generator.encoding import CODECS, QUALITY, make_encoder, probe_encoder
+import ffmpeg
+
+from reactions_generator.encoding import (
+    CODECS,
+    QUALITY,
+    make_encoder,
+    prepare_video,
+    probe_encoder,
+)
 
 
 class EncodingTests(unittest.TestCase):
+    def test_hardware_upload_filters_compile_with_typed_ffmpeg(self) -> None:
+        for backend in ("intel", "amd", "vaapi"):
+            with self.subTest(backend=backend):
+                video = ffmpeg.input("input.mp4").video
+                config = make_encoder(
+                    backend,
+                    vaapi_device="/dev/dri/renderD128" if backend == "vaapi" else None,
+                )
+                prepared = prepare_video(video, config)
+                command = ffmpeg.output(prepared, filename="out.mp4").compile(
+                    auto_fix=False
+                )
+                graph = command[command.index("-filter_complex") + 1]
+                self.assertIn("format=pix_fmts=nv12", graph)
+                self.assertEqual("hwupload" in graph, backend == "vaapi")
+
     def test_default_cpu(self) -> None:
         config = make_encoder()
         self.assertEqual(config.codec, "libx264")

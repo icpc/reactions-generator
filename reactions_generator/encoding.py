@@ -7,7 +7,6 @@ import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
 
 import ffmpeg
 
@@ -183,14 +182,11 @@ def prepare_video(
     video: ffmpeg.VideoStream, config: EncoderConfig
 ) -> ffmpeg.VideoStream:
     """Keep software composition; convert/upload only for the selected encoder."""
-    # typed-ffmpeg builds filter methods dynamically, so expose that runtime API
-    # locally while retaining the concrete stream type at this boundary.
-    filterable = cast(Any, video)
     if config.hardware in {"intel", "amd", "vaapi"}:
-        filterable = filterable.filter("format", "nv12")
+        video = video.format(pix_fmts="nv12")
     if config.hardware == "vaapi":
-        filterable = filterable.filter("hwupload")
-    return cast(ffmpeg.VideoStream, filterable)
+        video = video.hwupload()
+    return video
 
 
 def probe_encoder(config: EncoderConfig, timeout: float = 15.0) -> tuple[bool, str]:

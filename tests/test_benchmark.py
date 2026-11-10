@@ -114,6 +114,37 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(row["reason"], "CUDA missing")
             self.assertEqual(probe.call_count, 2)
 
+    def test_unexpected_backend_error_keeps_successful_results(self) -> None:
+        from reactions_generator.encoding import make_encoder
+
+        def render(**kwargs: object) -> None:
+            if kwargs["hardware"] == "vaapi":
+                raise AttributeError("unsupported filter API")
+            Path(str(kwargs["output_path"])).write_bytes(b"video")
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(
+                benchmark_module, "CODECS", {"cpu": "libx264", "vaapi": "h264_vaapi"}
+            ),
+            patch.object(benchmark_module.Path, "is_file", return_value=True),
+            patch.object(benchmark_module, "make_encoder", return_value=make_encoder()),
+            patch.object(benchmark_module, "probe_encoder", return_value=(True, "ok")),
+            patch.object(benchmark_module, "render_reaction", side_effect=render),
+            patch.object(benchmark_module, "inspect_output", return_value=5.0),
+            patch.object(
+                benchmark_module.subprocess,
+                "run",
+                return_value=Mock(stdout="ffmpeg test"),
+            ),
+        ):
+            benchmark_module.benchmark("all", "1", output_directory=directory)
+            report = json.loads(Path(directory, "results.json").read_text())
+            self.assertEqual(report["results"][0]["status"], "ok")
+            self.assertEqual(report["results"][1]["status"], "skipped")
+            self.assertIn("AttributeError", report["results"][1]["reason"])
+            self.assertEqual(report["recommended"]["hardware"], "cpu")
+
     def test_unavailable_encoder_is_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with (

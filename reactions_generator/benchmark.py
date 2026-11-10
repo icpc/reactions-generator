@@ -16,8 +16,6 @@ from functools import partial
 from pathlib import Path
 from typing import Required, TypedDict
 
-import ffmpeg
-
 from reactions_generator.defaults import Defaults
 from reactions_generator.encoding import (
     CODECS,
@@ -200,13 +198,7 @@ def benchmark(
                 bytes=job_path.stat().st_size,
                 video_seconds=video_duration,
             )
-        except (
-            OSError,
-            ValueError,
-            RuntimeError,
-            subprocess.SubprocessError,
-            ffmpeg.FFMpegExecuteError,
-        ) as exc:
+        except Exception as exc:  # noqa: BLE001 - Record failures and keep benchmarking other configurations.
             return RenderSample(
                 ok=False,
                 seconds=time.perf_counter() - started,
@@ -267,6 +259,7 @@ def benchmark(
                         "reason": f"Full render warm-up failed: {warmup.error}",
                     }
                 )
+                print(f"{backend:8} SKIP Full render warm-up failed: {warmup.error}")
                 continue
             for workers in counts:
                 for repeat in range(repetitions):

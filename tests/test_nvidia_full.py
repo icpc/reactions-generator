@@ -226,6 +226,7 @@ class NvidiaDispatchTests(unittest.TestCase):
         results = [
             subprocess.CompletedProcess([], 0, "scale_cuda overlay_cuda hwupload", ""),
             subprocess.CompletedProcess([], 0, "h264_nvenc", ""),
+            subprocess.CompletedProcess([], 0, "format <pix_fmt>", ""),
             subprocess.CompletedProcess([], 1, "", "CUDA driver unavailable"),
         ]
         with patch(
@@ -235,6 +236,25 @@ class NvidiaDispatchTests(unittest.TestCase):
         self.assertFalse(available)
         self.assertIn("CUDA driver", reason)
         self.assertIn("-hwaccel_output_format", run.call_args.args[0])
+
+    def test_old_scale_cuda_reports_format_requirement_before_runtime_test(
+        self,
+    ) -> None:
+        from reactions_generator.nvidia_full import probe_nvidia_full
+
+        results = [
+            subprocess.CompletedProcess([], 0, "scale_cuda overlay_cuda hwupload", ""),
+            subprocess.CompletedProcess([], 0, "h264_nvenc", ""),
+            subprocess.CompletedProcess([], 0, "w <int> h <int>", ""),
+        ]
+        with patch(
+            "reactions_generator.nvidia_full.subprocess.run", side_effect=results
+        ) as run:
+            available, reason = probe_nvidia_full("webcam.mp4", NvidiaFullSettings())
+        self.assertFalse(available)
+        self.assertIn("format option", reason)
+        self.assertIn("Upgrade", reason)
+        self.assertEqual(run.call_count, 3)
 
 
 class NvidiaCliTests(unittest.TestCase):

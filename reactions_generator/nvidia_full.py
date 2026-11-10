@@ -281,6 +281,19 @@ def probe_nvidia_full(
             missing = required - set(result.stdout.split())
             if missing:
                 return False, f"FFmpeg is missing: {', '.join(sorted(missing))}"
+        help_result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-h", "filter=scale_cuda"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        if help_result.returncode or "format" not in help_result.stdout.split():
+            return False, (
+                "This FFmpeg build lacks scale_cuda's format option, required for "
+                "YUV420P composition with the transparent card. Upgrade to a CUDA-enabled "
+                "FFmpeg build whose `ffmpeg -h filter=scale_cuda` lists format."
+            )
         result = subprocess.run(
             [
                 "ffmpeg",

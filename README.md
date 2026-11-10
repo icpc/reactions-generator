@@ -212,6 +212,12 @@ CQ 23, and two B-frames. The initial quality mapping is low = CQ 29,
 balanced (also accepted as medium) = CQ 23, high = CQ 19; these numbers are NVENC-specific and not x264
 CRF values. Explicit NVENC presets are `p1` through `p7`.
 
+The full CUDA path requires `scale_cuda` with its `format` option, needed to
+produce YUV420P video for the alpha-card overlay. Check
+`ffmpeg -hide_banner -h filter=scale_cuda`; if `format` is absent, upgrade the
+CUDA-enabled FFmpeg build. Ordinary `--hardware nvidia` can still work on such a
+build because it uses software composition.
+
 Check `nvidia-smi`, `ffmpeg -encoders | grep h264_nvenc`, and
 `ffmpeg -filters | grep -E 'scale_cuda|overlay_cuda|hwupload'`. Actual rendering
 still needs a compatible driver, runtime, and input codec. The generic Dockerfile
