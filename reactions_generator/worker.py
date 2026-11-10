@@ -120,6 +120,8 @@ def continuous_build_submission(
 
     def render_one(run: RunSummary) -> None:
         try:
+            with tqdm.external_write_mode():
+                print(f"Starting render: {run.id}", flush=True)
             build_submission(
                 id=run.id,
                 url=url,
@@ -138,6 +140,8 @@ def continuous_build_submission(
                 preset=preset,
                 vaapi_device=vaapi_device,
             )
+            with tqdm.external_write_mode():
+                print(f"Finished render: {run.id}", flush=True)
         except ffmpeg.FFMpegExecuteError as e:
             if stop.is_set():
                 return

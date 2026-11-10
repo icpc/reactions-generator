@@ -29,7 +29,8 @@ A fixed pool of renderer threads takes videos from the priority queue. Each
 renderer finishes its video before taking the highest-priority waiting submission.
 Renderers share one progress bar showing processed submissions out of the current
 total, including failed attempts. New eligible submissions increase the total;
-vanished waiting submissions decrease it. Routine status messages are suppressed.
+vanished waiting submissions decrease it. Each render prints a start message and,
+on success, a finish message on separate lines without disrupting the bar.
 When `--worker-id` is supplied, this process renders one partition and
 `--total-workers` specifies the number of distributed partitions. `--poll-interval` is the delay between polls in seconds (default: 2).
 The pool has one polling thread in addition to the render threads. The main thread
