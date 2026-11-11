@@ -20,10 +20,10 @@ import numpy as np
 from PIL import Image
 
 from reactions_generator.card import Card
+from reactions_generator.composition import compose_video, video_input
 from reactions_generator.defaults import Defaults
 from reactions_generator.encoding import EncoderConfig, make_encoder, prepare_video
 from reactions_generator.media import get_metadata, load_image_or_color, stage_media
-from reactions_generator.nvidia_full import build_nvidia_full_command
 
 logger = logging.getLogger(__name__)
 _active_processes: set[subprocess.Popen[bytes]] = set()
@@ -134,9 +134,12 @@ def render(
     print_progress: bool,
     acodec: str | None,
     encoding: EncoderConfig,
+    duration: float | None = None,
 ) -> None:
     if fps <= 0 or last_frame < 0:
         raise ValueError("Frame rate must be positive and last frame nonnegative")
+    if duration is not None and (not math.isfinite(duration) or duration <= 0):
+        raise ValueError("Duration must be finite and positive")
     graph = (
         ffmpeg.output(
             *ffmpeg_input,
@@ -145,6 +148,7 @@ def render(
             acodec=acodec,
             r=fps,
             pix_fmt=encoding.pixel_format,
+            t=duration,
             extra_options=encoding.output_options(acodec),
         )
         .global_args(loglevel="info" if print_progress else "error")
@@ -293,69 +297,39 @@ def render_reaction(
         )
 
         encoder = make_encoder(hardware, quality, preset, vcodec, vaapi_device)
-        if hardware == "nvidia_full":
-            command = build_nvidia_full_command(
-                webcam_source=webcam_source,
-                screen_source=screen_source,
-                screen_is_video=screen_is_video,
-                background_source=background_source,
-                action_audio_path=success_audio_path if success else fail_audio_path,
-                output_path=output_path,
-                fps=fps,
-                duration=metadata.duration,
-                animation_start=animation_start,
-                has_webcam_audio=metadata.audio,
-                sound=sound,
-                background_position=background_position,
-                webcam_position=webcam_position,
-                screen_position=screen_position,
-                card_position=card_position,
-                acodec=acodec,
-                print_progress=print_progress,
-                encoding=encoder,
-            )
-            run_card_command(
-                command=command,
-                card=card_creator,
-                last_frame=min(last_frame, animation_start + 6),
-                output_path=output_path,
-                print_progress=print_progress,
-            )
-            return
-
-        background = ffmpeg.input(background_source, hwaccel=hwaccel).scale(
-            w=background_position[2], h=background_position[3]
+        cuda = hardware == "nvidia_full"
+        webcam_input = video_input(webcam_source, encoder, hwaccel=hwaccel)
+        screen_input = video_input(
+            screen_source, encoder, hwaccel=hwaccel, static=not screen_is_video
         )
-        webcam = (
-            ffmpeg.input(webcam_source, hwaccel=hwaccel)
-            .video.scale(w=webcam_position[2], h=webcam_position[3])
-            .setpts(expr="PTS-STARTPTS")
-        )
-        screen = (
-            ffmpeg.input(screen_source, hwaccel=hwaccel)
-            .video.scale(w=screen_position[2], h=screen_position[3])
-            .setpts(expr="PTS-STARTPTS")
-        )
+        background = video_input(
+            background_source, encoder, hwaccel=hwaccel, static=True
+        ).video
         card = pipe_card_input(card_position[2], card_position[3], fps)
+        video = compose_video(
+            webcam=webcam_input.video,
+            screen=screen_input.video,
+            background=background,
+            card=card,
+            screen_is_video=screen_is_video,
+            fps=fps,
+            background_position=background_position,
+            webcam_position=webcam_position,
+            screen_position=screen_position,
+            card_position=card_position,
+            encoding=encoder,
+        )
+        if not cuda:
+            video = prepare_video(video, encoder)
 
+        delay_ms = animation_start / fps * 1000
+        if cuda:
+            delay_ms = round(delay_ms)
         action_sound = ffmpeg.input(
             success_audio_path if success else fail_audio_path
-        ).adelay(delays=animation_start / fps * 1000, all=True)
-
-        video = (
-            background.overlay(webcam, x=webcam_position[0], y=webcam_position[1])
-            .overlay(screen, x=screen_position[0], y=screen_position[1])
-            .overlay(card, x=card_position[0], y=card_position[1], eof_action="repeat")
-        )
-
-        video = prepare_video(video, encoder)
-
+        ).adelay(delays=delay_ms, all=True)
         audio = (
-            ffmpeg.filters.amix(
-                ffmpeg.input(webcam_source, hwaccel=hwaccel).audio,
-                action_sound,
-                duration="longest",
-            )
+            ffmpeg.filters.amix(webcam_input.audio, action_sound, duration="longest")
             if metadata.audio and sound
             else action_sound
         )
@@ -372,4 +346,5 @@ def render_reaction(
             print_progress=print_progress,
             acodec=acodec,
             encoding=encoder,
+            duration=metadata.duration if cuda else None,
         )

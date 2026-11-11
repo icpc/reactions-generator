@@ -171,9 +171,12 @@ def make_encoder(
         hardware if hardware == "nvidia_full" else backend,
         codec,
         opts,
-        None
-        if backend == "vaapi"
-        else ("nv12" if backend in {"intel", "amd"} else "yuv420p"),
+        {
+            "vaapi": None,
+            "intel": "nv12",
+            "amd": "nv12",
+            "nvidia_full": "cuda",
+        }.get(hardware if hardware == "nvidia_full" else backend, "yuv420p"),
         vaapi_device,
     )
 
@@ -186,6 +189,8 @@ def prepare_video(
         video = video.format(pix_fmts="nv12")
     if config.hardware == "vaapi":
         video = video.hwupload()
+    if config.hardware == "nvidia_full":
+        video = video.format(pix_fmts="yuv420p").hwupload()
     return video
 
 
@@ -226,3 +231,82 @@ def probe_encoder(config: EncoderConfig, timeout: float = 15.0) -> tuple[bool, s
             -800:
         ]
     return True, "ok"
+
+
+def probe_nvidia_full(
+    source: str, encoding: EncoderConfig, timeout: float = 30.0
+) -> tuple[bool, str]:
+    """Check filter support, then exercise CUDA decoding and NVENC encoding."""
+    if encoding.hardware != "nvidia_full":
+        raise ValueError("CUDA composition requires the nvidia_full encoder profile")
+    try:
+        for option, required in (
+            ("-filters", {"scale_cuda", "overlay_cuda", "hwupload"}),
+            ("-encoders", {"h264_nvenc"}),
+        ):
+            result = subprocess.run(
+                ["ffmpeg", "-hide_banner", option],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            if result.returncode:
+                return False, result.stderr.strip()[-800:]
+            missing = required - set(result.stdout.split())
+            if missing:
+                return False, f"FFmpeg is missing: {', '.join(sorted(missing))}"
+        help_result = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-h", "filter=scale_cuda"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        if help_result.returncode or "format" not in help_result.stdout.split():
+            return False, (
+                "This FFmpeg build lacks scale_cuda's format option, required for "
+                "YUV420P composition with the transparent card. Upgrade to a CUDA-enabled "
+                "FFmpeg build whose `ffmpeg -h filter=scale_cuda` lists format."
+            )
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-nostdin",
+                "-loglevel",
+                "error",
+                "-hwaccel",
+                "cuda",
+                "-hwaccel_output_format",
+                "cuda",
+                "-i",
+                source,
+                "-vf",
+                "scale_cuda=128:128:format=yuv420p",
+                "-frames:v",
+                "8",
+                "-an",
+                "-c:v",
+                encoding.codec,
+                *[
+                    argument
+                    for key, value in encoding.options.items()
+                    for argument in (f"-{key}", str(value))
+                ],
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, str(exc)
+    if result.returncode:
+        return False, (result.stderr.strip() or f"FFmpeg exited {result.returncode}")[
+            -800:
+        ]
+    return True, "CUDA decode and NVENC encode succeeded"

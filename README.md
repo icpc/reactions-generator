@@ -246,9 +246,9 @@ main benchmark --hardware all --worker-counts 1,2,4,8
 
 Default `nvidia_full` encoding uses H.264 NVENC, preset P5, HQ tuning,
 VBR, CQ 36, and two B-frames. Both NVIDIA paths share the quality mapping above.
-All renderers resolve encoding through the same `EncoderConfig` and share
-audio/output options and the FFmpeg process runner. The CUDA backend supplies
-its own decode/scale/overlay graph to keep video frames on the GPU.
+All renderers use one typed composition function with software or CUDA filter
+operations. They share input setup, audio mixing, card streaming, `EncoderConfig`,
+output compilation, and the process runner. CUDA video stays on the GPU.
 Explicit NVENC presets are `p1` through `p7`. The quality name `medium`
 is retained as an alias for `balanced` on this backend.
 

@@ -12,89 +12,101 @@ from PIL import Image
 
 from reactions_generator import rendering
 from reactions_generator.defaults import Defaults
-from reactions_generator.encoding import EncoderConfig, make_encoder
-from reactions_generator.nvidia_full import (
-    build_nvidia_full_command,
-)
+from reactions_generator.encoding import make_encoder
 
 
 class NvidiaTests(unittest.TestCase):
     def build(
         self,
         *,
-        screen_is_video: bool = True,
         screen_source: str = "screen.mp4",
         has_webcam_audio: bool = True,
         sound: bool = True,
         background_position: tuple[float, float, float, float] = (0, 0, 1080, 1920),
-        encoding: EncoderConfig | None = None,
+        hardware: str = "nvidia_full",
     ) -> list[str]:
-        return build_nvidia_full_command(
-            webcam_source="webcam.mp4",
-            screen_source=screen_source,
-            screen_is_video=screen_is_video,
-            background_source="background.png",
-            action_audio_path="success.mp3",
-            output_path="out.mp4",
-            fps=30.0,
-            duration=31.0,
-            animation_start=30,
-            has_webcam_audio=has_webcam_audio,
-            sound=sound,
-            background_position=background_position,
-            webcam_position=(40.0, 194.5, 1000.0, 562.5),
-            screen_position=(40.0, 1163.0, 1000.0, 562.5),
-            card_position=(40, 807, 1000, 306),
-            acodec="aac",
-            print_progress=False,
-            encoding=encoding or make_encoder("nvidia_full"),
-        )
+        with (
+            patch.object(
+                rendering,
+                "get_metadata",
+                return_value=Mock(fps=30, duration=31, audio=has_webcam_audio),
+            ),
+            patch.object(
+                rendering,
+                "load_image_or_color",
+                return_value=Image.new("RGBA", (152, 152)),
+            ),
+            patch.object(rendering, "run_card_command") as run,
+        ):
+            rendering.render_reaction(
+                hardware=hardware,
+                webcam_source="webcam.mp4",
+                screen_source=screen_source,
+                background_source="background.png",
+                success_audio_path="success.mp3",
+                output_path="out.mp4",
+                sound=sound,
+                background_position=background_position,
+                print_progress=False,
+            )
+        return run.call_args.args[0]
 
     def test_moving_inputs_stay_on_cuda_until_nvenc(self) -> None:
         command = self.build()
         graph = command[command.index("-filter_complex") + 1]
         self.assertEqual(command.count("-hwaccel_output_format"), 2)
         self.assertEqual(command.count("-hwaccel"), 2)
-        self.assertEqual(command[command.index("-c:v") + 1], "h264_nvenc")
-        self.assertEqual(command[command.index("-pix_fmt") + 1], "cuda")
-        self.assertIn("[0:v]scale_cuda=w=1000:h=562:format=yuv420p", graph)
-        self.assertIn("[1:v]scale_cuda=w=1000:h=562:format=yuv420p", graph)
-        self.assertIn("[3:v]format=yuva420p,hwupload", graph)
+        self.assertEqual(command[command.index("-vcodec") + 1], "h264_nvenc")
+        self.assertEqual(
+            [
+                command[index + 1]
+                for index, flag in enumerate(command)
+                if flag == "-pix_fmt"
+            ][-1],
+            "cuda",
+        )
+        self.assertIn("scale_cuda=w=1000:h=562:format=yuv420p", graph)
+        self.assertEqual(graph.count("scale_cuda="), 2)
+        self.assertIn("format=pix_fmts=yuva420p", graph)
+        self.assertEqual(graph.count("hwupload"), 2)
         self.assertEqual(graph.count("overlay_cuda="), 3)
         self.assertNotIn("hwdownload", graph)
-        self.assertIn(
-            "loop=loop=-1:size=1:start=0,settb=AVTB,setpts=N/(30*TB)[base]", graph
-        )
-        self.assertIn("[4:a]adelay=delays=1000:all=1[effect]", graph)
-        self.assertIn("[0:a][effect]amix=inputs=2", graph)
+        self.assertIn("loop=loop=-1:size=1:start=0", graph)
+        self.assertIn("settb=expr=AVTB", graph)
+        self.assertIn("setpts=expr=N/(30*TB)", graph)
+        self.assertIn("adelay=delays=1000:all=1", graph)
+        self.assertIn("amix=inputs=2:duration=longest", graph)
         self.assertEqual(command[-1], "out.mp4")
 
     def test_static_screen_is_uploaded_and_looped_without_cuda_decode(self) -> None:
-        command = self.build(screen_is_video=False, screen_source="A.png")
+        command = self.build(screen_source="A.png")
         graph = command[command.index("-filter_complex") + 1]
         self.assertEqual(command.count("-hwaccel_output_format"), 1)
-        self.assertIn("[1:v]scale=1000:562", graph)
-        self.assertIn("hwupload,loop=loop=-1:size=1:start=0", graph)
-        self.assertNotIn("[1:v]scale_cuda", graph)
+        self.assertIn("scale=w=1000:h=562:flags=bicubic", graph)
+        self.assertEqual(graph.count("hwupload"), 3)
+        self.assertEqual(graph.count("loop=loop=-1:size=1:start=0"), 2)
+        self.assertEqual(graph.count("scale_cuda="), 1)
 
     def test_no_webcam_audio_uses_effect_audio_only(self) -> None:
         for has_audio, sound in ((False, True), (True, False)):
             with self.subTest(has_audio=has_audio, sound=sound):
                 command = self.build(has_webcam_audio=has_audio, sound=sound)
                 graph = command[command.index("-filter_complex") + 1]
-                self.assertIn("[effect]anull[audio]", graph)
+                self.assertIn("adelay=delays=1000:all=1", graph)
                 self.assertNotIn("amix=", graph)
 
     def test_pixel_geometry_uses_even_chroma_alignment(self) -> None:
-        command = self.build()
-        graph = command[command.index("-filter_complex") + 1]
-        self.assertIn("overlay_cuda=x=40:y=194", graph)
-        self.assertIn("overlay_cuda=x=40:y=1162", graph)
-        self.assertIn("overlay_cuda=x=40:y=806", graph)
+        for hardware in ("cpu", "nvidia_full"):
+            with self.subTest(hardware=hardware):
+                command = self.build(hardware=hardware)
+                graph = command[command.index("-filter_complex") + 1]
+                overlay = "overlay_cuda" if hardware == "nvidia_full" else "overlay"
+                self.assertIn(f"{overlay}=x=40:y=194", graph)
+                self.assertIn(f"{overlay}=x=40:y=1162", graph)
+                self.assertIn(f"{overlay}=x=40:y=806", graph)
+                self.assertIn("w=1000:h=562", graph)
 
     def test_invalid_nvidia_settings_are_rejected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "nvidia_full"):
-            self.build(encoding=make_encoder("cpu"))
         with self.assertRaisesRegex(ValueError, "background"):
             self.build(background_position=(10, 0, 1080, 1920))
 
@@ -119,7 +131,7 @@ class NvidiaTests(unittest.TestCase):
 
 
 class NvidiaDispatchTests(unittest.TestCase):
-    def test_full_dispatch_skips_software_graph_and_handles_signed_images(self) -> None:
+    def test_full_dispatch_uses_shared_runner_and_handles_signed_images(self) -> None:
         metadata = Mock(fps=30, duration=33.3, audio=True)
         for source in ("screen.mp4", "https://example.com/A.PNG?token=123"):
             staged_screen = "screen.mp4" if source.endswith("mp4") else "screen.PNG"
@@ -137,18 +149,16 @@ class NvidiaDispatchTests(unittest.TestCase):
                     return_value=Image.new("RGBA", (152, 152)),
                 ),
                 patch.object(rendering, "run_card_command") as run,
-                patch.object(rendering, "render") as software,
-                patch.object(rendering.ffmpeg, "input") as software_input,
             ):
                 rendering.render_reaction(hardware="nvidia_full", screen_source=source)
-                command = run.call_args.kwargs["command"]
+                command = run.call_args.args[0]
                 self.assertIn(staged_screen, command)
                 self.assertIn(
                     "overlay_cuda", command[command.index("-filter_complex") + 1]
                 )
                 self.assertEqual(
-                    run.call_args.kwargs["last_frame"],
-                    run.call_args.kwargs["card"].animation_start + 6,
+                    run.call_args.args[2],
+                    run.call_args.args[1].animation_start + 6,
                 )
                 self.assertEqual(command[command.index("-preset") + 1], "p5")
                 self.assertEqual(command[command.index("-cq") + 1], "36")
@@ -156,8 +166,6 @@ class NvidiaDispatchTests(unittest.TestCase):
                 self.assertNotIn("-maxrate", command)
                 self.assertEqual(command[command.index("-b:a") + 1], "96k")
                 self.assertEqual(probe.call_count, 2 if source.endswith("mp4") else 1)
-                software.assert_not_called()
-                software_input.assert_not_called()
 
     def test_regular_nvidia_keeps_existing_profile(self) -> None:
         with (
@@ -172,10 +180,12 @@ class NvidiaDispatchTests(unittest.TestCase):
                 return_value=Image.new("RGBA", (152, 152)),
             ),
             patch.object(rendering, "render") as software,
-            patch.object(rendering, "build_nvidia_full_command") as cuda,
+            patch.object(
+                rendering, "compose_video", wraps=rendering.compose_video
+            ) as compose,
         ):
             rendering.render_reaction(hardware="nvidia")
-        cuda.assert_not_called()
+        compose.assert_called_once()
         config = software.call_args.kwargs["encoding"]
         self.assertEqual(config.options["preset"], "p3")
         self.assertEqual(config.options["cq"], 36)
@@ -223,10 +233,10 @@ class NvidiaDispatchTests(unittest.TestCase):
             self.assertTrue(process.stdin.closed)
 
     def test_cuda_probe_requires_filters_and_working_runtime(self) -> None:
-        from reactions_generator.nvidia_full import probe_nvidia_full
+        from reactions_generator.encoding import probe_nvidia_full
 
         with patch(
-            "reactions_generator.nvidia_full.subprocess.run",
+            "reactions_generator.encoding.subprocess.run",
             return_value=subprocess.CompletedProcess([], 0, "hwupload", ""),
         ):
             available, reason = probe_nvidia_full(
@@ -241,7 +251,7 @@ class NvidiaDispatchTests(unittest.TestCase):
             subprocess.CompletedProcess([], 1, "", "CUDA driver unavailable"),
         ]
         with patch(
-            "reactions_generator.nvidia_full.subprocess.run", side_effect=results
+            "reactions_generator.encoding.subprocess.run", side_effect=results
         ) as run:
             available, reason = probe_nvidia_full(
                 "webcam.mp4", make_encoder("nvidia_full")
@@ -253,7 +263,7 @@ class NvidiaDispatchTests(unittest.TestCase):
     def test_old_scale_cuda_reports_format_requirement_before_runtime_test(
         self,
     ) -> None:
-        from reactions_generator.nvidia_full import probe_nvidia_full
+        from reactions_generator.encoding import probe_nvidia_full
 
         results = [
             subprocess.CompletedProcess([], 0, "scale_cuda overlay_cuda hwupload", ""),
@@ -261,7 +271,7 @@ class NvidiaDispatchTests(unittest.TestCase):
             subprocess.CompletedProcess([], 0, "w <int> h <int>", ""),
         ]
         with patch(
-            "reactions_generator.nvidia_full.subprocess.run", side_effect=results
+            "reactions_generator.encoding.subprocess.run", side_effect=results
         ) as run:
             available, reason = probe_nvidia_full(
                 "webcam.mp4", make_encoder("nvidia_full")

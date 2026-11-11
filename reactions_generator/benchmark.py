@@ -22,8 +22,8 @@ from reactions_generator.encoding import (
     EncoderConfig,
     make_encoder,
     probe_encoder,
+    probe_nvidia_full,
 )
-from reactions_generator.nvidia_full import probe_nvidia_full
 from reactions_generator.rendering import render_reaction
 
 

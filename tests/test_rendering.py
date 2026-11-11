@@ -98,7 +98,7 @@ class RenderingTests(unittest.TestCase):
                 )
                 inputs = [call.args[0] for call in ffmpeg_input.call_args_list]
                 self.assertEqual(
-                    sum(path.endswith("/webcam.mp4") for path in inputs), 2
+                    sum(path.endswith("/webcam.mp4") for path in inputs), 1
                 )
                 self.assertEqual(
                     sum(path.endswith("/screen.webm") for path in inputs), 1
