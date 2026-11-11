@@ -83,6 +83,7 @@ def scale_video(
     if not cuda:
         return video.scale(w=width, h=height).setpts(expr="PTS-STARTPTS")
     if static:
+        """Don't know if this is really necessary, but we scale once on the CPU, and only then upload to the GPU"""
         scaled = video.scale(w=width, h=height, flags="bicubic")
         return _upload_static(scaled, fps)
     return video.scale_cuda(w=width, h=height, format="yuv420p").setpts(
