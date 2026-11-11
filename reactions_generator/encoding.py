@@ -26,14 +26,16 @@ CODECS = {
 BACKENDS = {
     codec: backend for backend, codec in CODECS.items() if backend != "nvidia_full"
 }
+# These values are arbitrary starting points on each encoder's own quality scale.
+# They favor small reaction videos; they do not imply equivalent quality or size.
 QUALITY = {
-    "cpu": {"low": 26, "balanced": 23, "high": 18},
-    "nvidia": {"low": 27, "balanced": 24, "high": 19},
-    "nvidia_full": {"low": 29, "balanced": 23, "high": 19},
-    "intel": {"low": 27, "balanced": 24, "high": 19},
-    "amd": {"low": 27, "balanced": 24, "high": 19},
-    "apple": {"low": 45, "balanced": 60, "high": 75},
-    "vaapi": {"low": 27, "balanced": 24, "high": 19},
+    "cpu": {"low": 29, "balanced": 26, "high": 21},
+    "nvidia": {"low": 32, "balanced": 29, "high": 23},
+    "nvidia_full": {"low": 32, "balanced": 29, "high": 23},
+    "intel": {"low": 32, "balanced": 29, "high": 23},
+    "amd": {"low": 32, "balanced": 29, "high": 23},
+    "apple": {"low": 5, "balanced": 10, "high": 30},
+    "vaapi": {"low": 32, "balanced": 29, "high": 23},
 }
 PRESETS = {
     "cpu": (
@@ -103,7 +105,7 @@ def make_encoder(
             {
                 "rc": "vbr",
                 "cq": settings.cq,
-                "b:v": "0",
+                "b:v": 0,
                 "preset": settings.preset,
                 "tune": "hq",
                 "bf": 2,
@@ -135,20 +137,20 @@ def make_encoder(
     if vaapi_device and backend != "vaapi":
         raise ValueError("--vaapi-device requires --hardware vaapi")
 
-    value = QUALITY[backend][quality]
     opts: dict[str, str | int]
     if backend == "cpu":
-        opts = {"crf": value}
+        opts = {"crf": QUALITY[backend][quality]}
     elif backend == "nvidia":
-        opts = {"rc": "vbr", "cq": value, "b:v": "0"}
+        opts = {"rc": "vbr", "cq": QUALITY[backend][quality], "b:v": 0}
     elif backend == "intel":
-        opts = {"global_quality": value}
+        opts = {"global_quality": QUALITY[backend][quality], "look_ahead": 0}
     elif backend == "amd":
+        value = QUALITY[backend][quality]
         opts = {"quality": preset or "speed", "rc": "cqp", "qp_i": value, "qp_p": value}
     elif backend == "apple":
-        opts = {"q:v": value}
+        opts = {"q:v": QUALITY[backend][quality]}
     else:
-        opts = {"qp": value}
+        opts = {"rc_mode": "CQP", "qp": QUALITY[backend][quality]}
 
     if preset is not None and backend not in {"amd"}:
         opts["preset"] = preset

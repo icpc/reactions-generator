@@ -143,7 +143,7 @@ encoding statistics. Logs are retained separately from temporary output videos;
 concurrent renders and retries use different filenames. Console progress behavior
 is unchanged.
 
-CPU H.264 encoding is the safe default: `libx264 -preset veryfast -crf 23`.
+CPU H.264 encoding is the safe default: `libx264 -preset veryfast -crf 26`.
 Hardware acceleration is **opt-in**; there is no automatic GPU selection or
 silent fallback. Select a backend explicitly with `--hardware`. `--hwaccel`
 controls input decoding separately and is not enabled automatically because
@@ -160,18 +160,25 @@ The opt-in `nvidia_full` profile below manages CUDA decoding and composition its
 | Intel/AMD Linux via VAAPI | `vaapi` | `h264_vaapi` | driver-controlled |
 | Apple Silicon / supported Intel Mac | `apple` | `h264_videotoolbox` | driver-controlled |
 
-`--quality low|balanced|high` (default `balanced`) maps to these encoder-specific
-parameters. The numbers are **not comparable in perceptual quality** across
-encoders; Apple VideoToolbox uses a reversed quality direction.
+`--quality low|balanced|high` (default `balanced`) uses quality-based encoding,
+so simple cards and static screens can compress to small files.
 
 | Encoder quality control | Low | Balanced | High |
 | --- | ---: | ---: | ---: |
-| x264 CRF | 26 | 23 | 18 |
-| NVENC CQ | 27 | 24 | 19 |
-| QSV global_quality | 27 | 24 | 19 |
-| AMF CQP | 27 | 24 | 19 |
-| VAAPI QP | 27 | 24 | 19 |
-| VideoToolbox q:v | 45 | 60 | 75 |
+| x264 CRF | 29 | 26 | 21 |
+| NVENC CQ (both paths) | 32 | 29 | 23 |
+| QSV global_quality | 32 | 29 | 23 |
+| AMF CQP | 32 | 29 | 23 |
+| VAAPI CQP | 32 | 29 | 23 |
+| VideoToolbox q:v | 5 | 10 | 30 |
+
+These values are arbitrary starting points on each encoder's own quality scale.
+Lower values increase quality except for VideoToolbox, whose scale is reversed.
+They favor small reaction videos with static cards and screens. Actual sizes
+and perceptual quality vary with content, device, and driver. AAC audio uses
+96 kb/s. Use `--quality high` when preserving more detail matters.
+QSV uses ICQ with lookahead disabled, and VAAPI uses explicit CQP for driver
+compatibility.
 
 Quality controls output fidelity/file size; `--preset` controls compression
 speed/efficiency and is validated for the selected backend. `--vcodec` is an
@@ -230,10 +237,10 @@ main all OVERLAYER_URL --hardware nvidia_full --total-workers 1
 main benchmark --hardware all --worker-counts 1,2,4,8
 ```
 
-Default `nvidia_full` encoder is H.264 NVENC with preset P5, HQ tuning, VBR,
-CQ 23, and two B-frames. The initial quality mapping is low = CQ 29,
-balanced (also accepted as medium) = CQ 23, high = CQ 19; these numbers are NVENC-specific and not x264
-CRF values. Explicit NVENC presets are `p1` through `p7`.
+Default `nvidia_full` encoding uses H.264 NVENC, preset P5, HQ tuning,
+VBR, CQ 29, and two B-frames. Both NVIDIA paths share the quality mapping above.
+Explicit NVENC presets are `p1` through `p7`. The quality name `medium`
+is retained as an alias for `balanced` on this backend.
 
 The full CUDA path requires `scale_cuda` with its `format` option, needed to
 produce YUV420P video for the alpha-card overlay. Check

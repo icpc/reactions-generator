@@ -15,7 +15,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class NvidiaFullSettings:
     device: int = 0
-    cq: int = 23
+    cq: int = 29
     preset: str = "p5"
 
     def validate(self) -> None:
@@ -35,7 +35,8 @@ def settings_from_cli(
     Caller must pass RAW, explicitly supplied codec/preset values or None,
     not CPU-resolved defaults like libx264/veryfast.
     """
-    quality_to_cq = {"low": 29, "medium": 23, "balanced": 23, "high": 19}
+    # Arbitrary starting values on NVENC's own quality scale.
+    quality_to_cq = {"low": 32, "medium": 29, "balanced": 29, "high": 23}
     key = quality or "medium"
     if key not in quality_to_cq:
         raise ValueError(f"Unsupported NVIDIA full quality: {key!r}")
@@ -43,7 +44,10 @@ def settings_from_cli(
         raise ValueError(
             "--hardware nvidia_full requires --vcodec h264_nvenc (or omit --vcodec)"
         )
-    settings = NvidiaFullSettings(cq=quality_to_cq[key], preset=preset or "p5")
+    settings = NvidiaFullSettings(
+        cq=quality_to_cq[key],
+        preset=preset or "p5",
+    )
     settings.validate()
     return settings
 
@@ -256,6 +260,8 @@ def build_nvidia_full_command(
             output_path,
         ]
     )
+    if acodec == "aac":
+        command[-1:-1] = ["-b:a", "96k"]
     return command
 
 

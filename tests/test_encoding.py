@@ -33,7 +33,10 @@ class EncodingTests(unittest.TestCase):
     def test_default_cpu(self) -> None:
         config = make_encoder()
         self.assertEqual(config.codec, "libx264")
-        self.assertEqual(config.options, {"crf": 23, "preset": "veryfast"})
+        self.assertEqual(
+            config.options,
+            {"crf": 26, "preset": "veryfast"},
+        )
 
     def test_mappings(self) -> None:
         for backend, codec in CODECS.items():
@@ -45,7 +48,6 @@ class EncodingTests(unittest.TestCase):
                 with self.subTest(backend=backend, quality=quality):
                     config = make_encoder(backend, quality, vaapi_device=device)
                     self.assertEqual(config.codec, codec)
-                    expected = QUALITY[backend][quality]
                     key = {
                         "cpu": "crf",
                         "nvidia": "cq",
@@ -55,7 +57,9 @@ class EncodingTests(unittest.TestCase):
                         "apple": "q:v",
                         "vaapi": "qp",
                     }[backend]
-                    self.assertEqual(config.options[key], expected)
+                    self.assertEqual(config.options[key], QUALITY[backend][quality])
+                    self.assertNotIn("maxrate", config.options)
+                    self.assertNotIn("bufsize", config.options)
 
     def test_explicit_hardware_and_codec_conflict(self) -> None:
         with self.assertRaises(ValueError):

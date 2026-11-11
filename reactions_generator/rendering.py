@@ -145,7 +145,11 @@ def render(
             acodec=acodec,
             r=fps,
             pix_fmt=encoding.pixel_format,
-            extra_options={**encoding.options, "movflags": "+faststart"},
+            extra_options={
+                **encoding.options,
+                **({"b:a": "96k"} if acodec == "aac" else {}),
+                "movflags": "+faststart",
+            },
         )
         .global_args(loglevel="info" if print_progress else "error")
         .overwrite_output()
