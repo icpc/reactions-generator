@@ -160,23 +160,30 @@ The opt-in `nvidia_full` profile below manages CUDA decoding and composition its
 | Intel/AMD Linux via VAAPI | `vaapi` | `h264_vaapi` | driver-controlled |
 | Apple Silicon / supported Intel Mac | `apple` | `h264_videotoolbox` | driver-controlled |
 
-`--quality low|balanced|high` (default `balanced`) uses quality-based encoding,
+`--quality very-low|low|balanced|high` (default `balanced`) uses quality-based encoding,
 so simple cards and static screens can compress to small files.
 
-| Encoder quality control | Low | Balanced | High |
-| --- | ---: | ---: | ---: |
-| x264 CRF | 29 | 26 | 21 |
-| NVENC CQ (both paths) | 32 | 29 | 23 |
-| QSV global_quality | 32 | 29 | 23 |
-| AMF CQP | 32 | 29 | 23 |
-| VAAPI CQP | 32 | 29 | 23 |
-| VideoToolbox q:v | 5 | 10 | 30 |
+| Encoder quality control | Very low | Low | Balanced | High |
+| --- | ---: | ---: | ---: | ---: |
+| x264 CRF | 34 | 29 | 26 | 21 |
+| NVENC CQ (both paths) | 42 | 39 | 36 | 29 |
+| QSV global_quality | 38 | 32 | 29 | 23 |
+| AMF CQP | 38 | 32 | 29 | 23 |
+| VAAPI CQP | 38 | 32 | 29 | 23 |
+| VideoToolbox q:v | 1 | 5 | 10 | 30 |
 
 These values are arbitrary starting points on each encoder's own quality scale.
 Lower values increase quality except for VideoToolbox, whose scale is reversed.
 They favor small reaction videos with static cards and screens. Actual sizes
 and perceptual quality vary with content, device, and driver. AAC audio uses
-96 kb/s. Use `--quality high` when preserving more detail matters.
+96 kb/s. Use `--quality very-low` for smaller files with more visible compression,
+or `--quality high` when preserving more detail matters.
+
+On the bundled 33.3-second reaction, a Tesla V100 with FFmpeg 7.1.5 produced
+NVIDIA output at 1.059 times CPU size and full CUDA output at 1.108 times CPU
+size using balanced CQ 36 and CPU CRF 26. Apple q:v 10 produced 1.83 MB in a
+separate macOS run. QSV, VAAPI, and AMD values have command-level validation
+only. Check the resulting card text and webcam detail on representative footage.
 QSV uses ICQ with lookahead disabled, and VAAPI uses explicit CQP for driver
 compatibility.
 
@@ -238,7 +245,7 @@ main benchmark --hardware all --worker-counts 1,2,4,8
 ```
 
 Default `nvidia_full` encoding uses H.264 NVENC, preset P5, HQ tuning,
-VBR, CQ 29, and two B-frames. Both NVIDIA paths share the quality mapping above.
+VBR, CQ 36, and two B-frames. Both NVIDIA paths share the quality mapping above.
 All renderers resolve encoding through the same `EncoderConfig` and share
 audio/output options and the FFmpeg process runner. The CUDA backend supplies
 its own decode/scale/overlay graph to keep video frames on the GPU.

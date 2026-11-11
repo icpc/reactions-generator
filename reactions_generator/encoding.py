@@ -27,12 +27,12 @@ BACKENDS = {
 # These values are arbitrary starting points on each encoder's own quality scale.
 # They favor small reaction videos; they do not imply equivalent quality or size.
 QUALITY = {
-    "cpu": {"low": 29, "balanced": 26, "high": 21},
-    "nvidia": {"low": 32, "balanced": 29, "high": 23},
-    "intel": {"low": 32, "balanced": 29, "high": 23},
-    "amd": {"low": 32, "balanced": 29, "high": 23},
-    "apple": {"low": 5, "balanced": 10, "high": 30},
-    "vaapi": {"low": 32, "balanced": 29, "high": 23},
+    "cpu": {"very-low": 34, "low": 29, "balanced": 26, "high": 21},
+    "nvidia": {"very-low": 42, "low": 39, "balanced": 36, "high": 29},
+    "intel": {"very-low": 38, "low": 32, "balanced": 29, "high": 23},
+    "amd": {"very-low": 38, "low": 32, "balanced": 29, "high": 23},
+    "apple": {"very-low": 1, "low": 5, "balanced": 10, "high": 30},
+    "vaapi": {"very-low": 38, "low": 32, "balanced": 29, "high": 23},
 }
 PRESETS = {
     "cpu": (
@@ -108,8 +108,8 @@ def make_encoder(
             raise ValueError("--hardware nvidia_full requires --vcodec h264_nvenc")
         if quality == "medium":
             quality = "balanced"
-    if quality not in {"low", "balanced", "high"}:
-        raise ValueError("--quality must be low, balanced, or high")
+    if quality not in QUALITY["cpu"]:
+        raise ValueError("--quality must be very-low, low, balanced, or high")
     if vcodec is not None and hardware not in {"cpu", "nvidia_full"}:
         raise ValueError("--vcodec cannot be combined with a non-CPU --hardware")
 

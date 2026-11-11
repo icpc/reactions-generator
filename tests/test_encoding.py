@@ -44,7 +44,7 @@ class EncodingTests(unittest.TestCase):
                 device = "/dev/dri/renderD128"
             else:
                 device = None
-            for quality in ("low", "balanced", "high"):
+            for quality in ("very-low", "low", "balanced", "high"):
                 with self.subTest(backend=backend, quality=quality):
                     config = make_encoder(backend, quality, vaapi_device=device)
                     self.assertEqual(config.codec, codec)

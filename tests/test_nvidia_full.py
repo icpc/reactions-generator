@@ -104,10 +104,10 @@ class NvidiaTests(unittest.TestCase):
             make_encoder("nvidia_full"),
         )
         self.assertEqual(
-            make_encoder("nvidia_full", "high", "p6", "h264_nvenc").options["cq"], 23
+            make_encoder("nvidia_full", "high", "p6", "h264_nvenc").options["cq"], 29
         )
         for backend in ("nvidia", "nvidia_full"):
-            for quality in ("low", "balanced", "high"):
+            for quality in ("very-low", "low", "balanced", "high"):
                 self.assertEqual(
                     make_encoder(backend, quality).options["cq"],
                     make_encoder("nvidia", quality).options["cq"],
@@ -151,7 +151,7 @@ class NvidiaDispatchTests(unittest.TestCase):
                     run.call_args.kwargs["card"].animation_start + 6,
                 )
                 self.assertEqual(command[command.index("-preset") + 1], "p5")
-                self.assertEqual(command[command.index("-cq") + 1], "29")
+                self.assertEqual(command[command.index("-cq") + 1], "36")
                 self.assertEqual(command[command.index("-b:v") + 1], "0")
                 self.assertNotIn("-maxrate", command)
                 self.assertEqual(command[command.index("-b:a") + 1], "96k")
@@ -178,7 +178,7 @@ class NvidiaDispatchTests(unittest.TestCase):
         cuda.assert_not_called()
         config = software.call_args.kwargs["encoding"]
         self.assertEqual(config.options["preset"], "p3")
-        self.assertEqual(config.options["cq"], 29)
+        self.assertEqual(config.options["cq"], 36)
 
     def test_failed_cuda_encode_preserves_existing_file(self) -> None:
         process = Mock(stdin=io.BytesIO(), returncode=1)
