@@ -57,7 +57,12 @@ class EncodingTests(unittest.TestCase):
                         "apple": "q:v",
                         "vaapi": "qp",
                     }[backend]
-                    self.assertEqual(config.options[key], QUALITY[backend][quality])
+                    self.assertEqual(
+                        config.options[key],
+                        QUALITY["nvidia" if backend == "nvidia_full" else backend][
+                            quality
+                        ],
+                    )
                     self.assertNotIn("maxrate", config.options)
                     self.assertNotIn("bufsize", config.options)
 

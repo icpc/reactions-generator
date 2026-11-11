@@ -12,8 +12,8 @@ from PIL import Image
 
 from reactions_generator import rendering
 from reactions_generator.defaults import Defaults
+from reactions_generator.encoding import EncoderConfig, make_encoder
 from reactions_generator.nvidia_full import (
-    NvidiaFullSettings,
     build_nvidia_full_command,
 )
 
@@ -27,7 +27,7 @@ class NvidiaTests(unittest.TestCase):
         has_webcam_audio: bool = True,
         sound: bool = True,
         background_position: tuple[float, float, float, float] = (0, 0, 1080, 1920),
-        settings: NvidiaFullSettings | None = None,
+        encoding: EncoderConfig | None = None,
     ) -> list[str]:
         return build_nvidia_full_command(
             webcam_source="webcam.mp4",
@@ -47,7 +47,7 @@ class NvidiaTests(unittest.TestCase):
             card_position=(40, 807, 1000, 306),
             acodec="aac",
             print_progress=False,
-            settings=settings or NvidiaFullSettings(),
+            encoding=encoding or make_encoder("nvidia_full"),
         )
 
     def test_moving_inputs_stay_on_cuda_until_nvenc(self) -> None:
@@ -93,31 +93,29 @@ class NvidiaTests(unittest.TestCase):
         self.assertIn("overlay_cuda=x=40:y=806", graph)
 
     def test_invalid_nvidia_settings_are_rejected(self) -> None:
-        for settings in (
-            NvidiaFullSettings(device=-1),
-            NvidiaFullSettings(cq=52),
-            NvidiaFullSettings(cq=-1),
-            NvidiaFullSettings(preset="slow"),
-        ):
-            with self.subTest(settings=settings), self.assertRaises(ValueError):
-                self.build(settings=settings)
+        with self.assertRaisesRegex(ValueError, "nvidia_full"):
+            self.build(encoding=make_encoder("cpu"))
         with self.assertRaisesRegex(ValueError, "background"):
             self.build(background_position=(10, 0, 1080, 1920))
 
     def test_shared_cli_defaults_and_quality_mapping(self) -> None:
-        from reactions_generator.nvidia_full import settings_from_cli
-
         self.assertEqual(
-            settings_from_cli(quality=None, preset=None, vcodec=None),
-            NvidiaFullSettings(),
+            make_encoder("nvidia_full", "medium"),
+            make_encoder("nvidia_full"),
         )
         self.assertEqual(
-            settings_from_cli(quality="high", preset="p6", vcodec="h264_nvenc").cq, 23
+            make_encoder("nvidia_full", "high", "p6", "h264_nvenc").options["cq"], 23
         )
+        for backend in ("nvidia", "nvidia_full"):
+            for quality in ("low", "balanced", "high"):
+                self.assertEqual(
+                    make_encoder(backend, quality).options["cq"],
+                    make_encoder("nvidia", quality).options["cq"],
+                )
         with self.assertRaisesRegex(ValueError, "requires --vcodec"):
-            settings_from_cli(quality="medium", preset=None, vcodec="libx264")
+            make_encoder("nvidia_full", vcodec="libx264")
         with self.assertRaisesRegex(ValueError, "preset"):
-            settings_from_cli(quality="medium", preset="veryfast", vcodec=None)
+            make_encoder("nvidia_full", preset="veryfast")
 
 
 class NvidiaDispatchTests(unittest.TestCase):
@@ -231,7 +229,9 @@ class NvidiaDispatchTests(unittest.TestCase):
             "reactions_generator.nvidia_full.subprocess.run",
             return_value=subprocess.CompletedProcess([], 0, "hwupload", ""),
         ):
-            available, reason = probe_nvidia_full("webcam.mp4", NvidiaFullSettings())
+            available, reason = probe_nvidia_full(
+                "webcam.mp4", make_encoder("nvidia_full")
+            )
         self.assertFalse(available)
         self.assertIn("overlay_cuda", reason)
         results = [
@@ -243,7 +243,9 @@ class NvidiaDispatchTests(unittest.TestCase):
         with patch(
             "reactions_generator.nvidia_full.subprocess.run", side_effect=results
         ) as run:
-            available, reason = probe_nvidia_full("webcam.mp4", NvidiaFullSettings())
+            available, reason = probe_nvidia_full(
+                "webcam.mp4", make_encoder("nvidia_full")
+            )
         self.assertFalse(available)
         self.assertIn("CUDA driver", reason)
         self.assertIn("-hwaccel_output_format", run.call_args.args[0])
@@ -261,7 +263,9 @@ class NvidiaDispatchTests(unittest.TestCase):
         with patch(
             "reactions_generator.nvidia_full.subprocess.run", side_effect=results
         ) as run:
-            available, reason = probe_nvidia_full("webcam.mp4", NvidiaFullSettings())
+            available, reason = probe_nvidia_full(
+                "webcam.mp4", make_encoder("nvidia_full")
+            )
         self.assertFalse(available)
         self.assertIn("format option", reason)
         self.assertIn("Upgrade", reason)

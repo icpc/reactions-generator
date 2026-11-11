@@ -10,8 +10,6 @@ from pathlib import Path
 
 import ffmpeg
 
-from reactions_generator.nvidia_full import settings_from_cli
-
 logger = logging.getLogger(__name__)
 
 CODECS = {
@@ -31,7 +29,6 @@ BACKENDS = {
 QUALITY = {
     "cpu": {"low": 29, "balanced": 26, "high": 21},
     "nvidia": {"low": 32, "balanced": 29, "high": 23},
-    "nvidia_full": {"low": 32, "balanced": 29, "high": 23},
     "intel": {"low": 32, "balanced": 29, "high": 23},
     "amd": {"low": 32, "balanced": 29, "high": 23},
     "apple": {"low": 5, "balanced": 10, "high": 30},
@@ -73,7 +70,16 @@ class EncoderConfig:
     pixel_format: str | None
     vaapi_device: str | None = None
 
+    def output_options(self, acodec: str | None) -> dict[str, str | int]:
+        return {
+            **self.options,
+            **({"b:a": "96k"} if acodec == "aac" else {}),
+            "movflags": "+faststart",
+        }
+
     def device_args(self) -> list[str]:
+        if self.hardware == "nvidia_full":
+            return ["-init_hw_device", "cuda=gpu:0", "-filter_hw_device", "gpu"]
         if self.codec != "h264_vaapi":
             return []
         assert self.vaapi_device is not None
@@ -98,23 +104,13 @@ def make_encoder(
     if hardware == "nvidia_full":
         if vaapi_device is not None:
             raise ValueError("--vaapi-device requires --hardware vaapi")
-        settings = settings_from_cli(quality=quality, preset=preset, vcodec=vcodec)
-        return EncoderConfig(
-            hardware,
-            CODECS[hardware],
-            {
-                "rc": "vbr",
-                "cq": settings.cq,
-                "b:v": 0,
-                "preset": settings.preset,
-                "tune": "hq",
-                "bf": 2,
-            },
-            "yuv420p",
-        )
+        if vcodec not in {None, "h264_nvenc"}:
+            raise ValueError("--hardware nvidia_full requires --vcodec h264_nvenc")
+        if quality == "medium":
+            quality = "balanced"
     if quality not in {"low", "balanced", "high"}:
         raise ValueError("--quality must be low, balanced, or high")
-    if vcodec is not None and hardware != "cpu":
+    if vcodec is not None and hardware not in {"cpu", "nvidia_full"}:
         raise ValueError("--vcodec cannot be combined with a non-CPU --hardware")
 
     codec = vcodec or CODECS[hardware]
@@ -128,7 +124,7 @@ def make_encoder(
         )
 
     if preset is None:
-        preset = DEFAULT_PRESETS[backend]
+        preset = "p5" if hardware == "nvidia_full" else DEFAULT_PRESETS[backend]
     elif preset not in PRESETS[backend]:
         raise ValueError(
             f"--preset for {backend} must be one of {', '.join(PRESETS[backend]) or '(none)'}"
@@ -142,6 +138,8 @@ def make_encoder(
         opts = {"crf": QUALITY[backend][quality]}
     elif backend == "nvidia":
         opts = {"rc": "vbr", "cq": QUALITY[backend][quality], "b:v": 0}
+        if hardware == "nvidia_full":
+            opts.update(tune="hq", bf=2)
     elif backend == "intel":
         opts = {"global_quality": QUALITY[backend][quality], "look_ahead": 0}
     elif backend == "amd":
@@ -170,7 +168,7 @@ def make_encoder(
                 "No VAAPI render device found; pass --vaapi-device /dev/dri/renderDXXX"
             )
     return EncoderConfig(
-        backend,
+        hardware if hardware == "nvidia_full" else backend,
         codec,
         opts,
         None

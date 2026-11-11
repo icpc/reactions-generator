@@ -23,7 +23,7 @@ from reactions_generator.encoding import (
     make_encoder,
     probe_encoder,
 )
-from reactions_generator.nvidia_full import probe_nvidia_full, settings_from_cli
+from reactions_generator.nvidia_full import probe_nvidia_full
 from reactions_generator.rendering import render_reaction
 
 
@@ -225,7 +225,7 @@ def benchmark(
                 if backend == "nvidia_full":
                     available, reason = probe_nvidia_full(
                         webcam_source,
-                        settings_from_cli(quality=quality, preset=preset, vcodec=None),
+                        config,
                     )
                 else:
                     available, reason = probe_encoder(config)

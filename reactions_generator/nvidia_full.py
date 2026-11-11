@@ -9,47 +9,8 @@ from __future__ import annotations
 
 import math
 import subprocess
-from dataclasses import dataclass
 
-
-@dataclass(frozen=True, slots=True)
-class NvidiaFullSettings:
-    device: int = 0
-    cq: int = 29
-    preset: str = "p5"
-
-    def validate(self) -> None:
-        if self.device < 0:
-            raise ValueError("NVIDIA device index must be nonnegative")
-        if not 0 <= self.cq <= 51:
-            raise ValueError("NVIDIA CQ must be in the range 0..51")
-        if self.preset not in {"p1", "p2", "p3", "p4", "p5", "p6", "p7"}:
-            raise ValueError("NVIDIA preset must be p1..p7")
-
-
-def settings_from_cli(
-    *, quality: str | None, preset: str | None, vcodec: str | None
-) -> NvidiaFullSettings:
-    """Translate shared CLI options into this backend's NVENC settings.
-
-    Caller must pass RAW, explicitly supplied codec/preset values or None,
-    not CPU-resolved defaults like libx264/veryfast.
-    """
-    # Arbitrary starting values on NVENC's own quality scale.
-    quality_to_cq = {"low": 32, "medium": 29, "balanced": 29, "high": 23}
-    key = quality or "medium"
-    if key not in quality_to_cq:
-        raise ValueError(f"Unsupported NVIDIA full quality: {key!r}")
-    if vcodec is not None and vcodec != "h264_nvenc":
-        raise ValueError(
-            "--hardware nvidia_full requires --vcodec h264_nvenc (or omit --vcodec)"
-        )
-    settings = NvidiaFullSettings(
-        cq=quality_to_cq[key],
-        preset=preset or "p5",
-    )
-    settings.validate()
-    return settings
+from reactions_generator.encoding import EncoderConfig
 
 
 def _even_dimension(value: float) -> int:
@@ -100,7 +61,7 @@ def build_nvidia_full_command(
     card_position: tuple[int, int, int, int],
     acodec: str,
     print_progress: bool,
-    settings: NvidiaFullSettings,
+    encoding: EncoderConfig,
 ) -> list[str]:
     """Return a CUDA-only video graph with a small software-input boundary.
 
@@ -108,7 +69,8 @@ def build_nvidia_full_command(
     4 verdict sound. Background and still-screen frames are scaled and uploaded
     once, then repeated as GPU frame references with fresh timestamps.
     """
-    settings.validate()
+    if encoding.hardware != "nvidia_full":
+        raise ValueError("CUDA composition requires the nvidia_full encoder profile")
     if not math.isfinite(fps) or fps <= 0:
         raise ValueError("Frame rate must be finite and positive")
     if not math.isfinite(duration) or duration <= 0:
@@ -142,10 +104,7 @@ def build_nvidia_full_command(
         "-y",
         "-loglevel",
         "info" if print_progress else "error",
-        "-init_hw_device",
-        f"cuda=gpu:{settings.device}",
-        "-filter_hw_device",
-        "gpu",
+        *encoding.device_args(),
         "-hwaccel",
         "cuda",
         "-hwaccel_device",
@@ -234,19 +193,12 @@ def build_nvidia_full_command(
             "-map",
             "[audio]",
             "-c:v",
-            "h264_nvenc",
-            "-preset",
-            settings.preset,
-            "-tune",
-            "hq",
-            "-rc",
-            "vbr",
-            "-cq",
-            str(settings.cq),
-            "-b:v",
-            "0",
-            "-bf",
-            "2",
+            encoding.codec,
+            *[
+                argument
+                for key, value in encoding.output_options(acodec).items()
+                for argument in (f"-{key}", str(value))
+            ],
             "-pix_fmt",
             "cuda",  # Avoid a CPU-frame conversion before NVENC.
             "-r",
@@ -255,21 +207,18 @@ def build_nvidia_full_command(
             acodec,
             "-t",
             f"{duration:.9f}",
-            "-movflags",
-            "+faststart",
             output_path,
         ]
     )
-    if acodec == "aac":
-        command[-1:-1] = ["-b:a", "96k"]
     return command
 
 
 def probe_nvidia_full(
-    source: str, settings: NvidiaFullSettings, timeout: float = 30.0
+    source: str, encoding: EncoderConfig, timeout: float = 30.0
 ) -> tuple[bool, str]:
     """Check filter support, then exercise CUDA decoding and NVENC encoding."""
-    settings.validate()
+    if encoding.hardware != "nvidia_full":
+        raise ValueError("CUDA composition requires the nvidia_full encoder profile")
     try:
         for option, required in (
             ("-filters", {"scale_cuda", "overlay_cuda", "hwupload"}),
@@ -319,15 +268,12 @@ def probe_nvidia_full(
                 "8",
                 "-an",
                 "-c:v",
-                "h264_nvenc",
-                "-preset",
-                settings.preset,
-                "-rc",
-                "vbr",
-                "-cq",
-                str(settings.cq),
-                "-b:v",
-                "0",
+                encoding.codec,
+                *[
+                    argument
+                    for key, value in encoding.options.items()
+                    for argument in (f"-{key}", str(value))
+                ],
                 "-f",
                 "null",
                 "-",

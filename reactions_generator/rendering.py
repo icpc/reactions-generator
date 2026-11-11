@@ -23,7 +23,7 @@ from reactions_generator.card import Card
 from reactions_generator.defaults import Defaults
 from reactions_generator.encoding import EncoderConfig, make_encoder, prepare_video
 from reactions_generator.media import get_metadata, load_image_or_color, stage_media
-from reactions_generator.nvidia_full import build_nvidia_full_command, settings_from_cli
+from reactions_generator.nvidia_full import build_nvidia_full_command
 
 logger = logging.getLogger(__name__)
 _active_processes: set[subprocess.Popen[bytes]] = set()
@@ -145,11 +145,7 @@ def render(
             acodec=acodec,
             r=fps,
             pix_fmt=encoding.pixel_format,
-            extra_options={
-                **encoding.options,
-                **({"b:a": "96k"} if acodec == "aac" else {}),
-                "movflags": "+faststart",
-            },
+            extra_options=encoding.output_options(acodec),
         )
         .global_args(loglevel="info" if print_progress else "error")
         .overwrite_output()
@@ -296,15 +292,8 @@ def render_reaction(
             height=card_position[3],
         )
 
+        encoder = make_encoder(hardware, quality, preset, vcodec, vaapi_device)
         if hardware == "nvidia_full":
-            if vaapi_device is not None:
-                raise ValueError("--vaapi-device requires --hardware vaapi")
-            # Use the branch's existing quality/preset options. Map them to NVENC.
-            settings = settings_from_cli(
-                quality=quality,
-                preset=preset,
-                vcodec=vcodec,
-            )
             command = build_nvidia_full_command(
                 webcam_source=webcam_source,
                 screen_source=screen_source,
@@ -323,7 +312,7 @@ def render_reaction(
                 card_position=card_position,
                 acodec=acodec,
                 print_progress=print_progress,
-                settings=settings,
+                encoding=encoder,
             )
             run_card_command(
                 command=command,
@@ -334,7 +323,6 @@ def render_reaction(
             )
             return
 
-        encoder = make_encoder(hardware, quality, preset, vcodec, vaapi_device)
         background = ffmpeg.input(background_source, hwaccel=hwaccel).scale(
             w=background_position[2], h=background_position[3]
         )
