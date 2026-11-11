@@ -8,6 +8,16 @@ formatting, and type-checking expectations come from GitHub Actions; keep those
 checks passing, fix issues introduced by your changes, and explicitly report any
 existing failures or blockers.
 
+Favor small reaction videos with comparable real-world file sizes across CPU,
+NVIDIA, full CUDA, Apple, QSV, and VAAPI. Tune each encoder's quality settings
+using complete reaction renders of representative footage, comparing bytes for
+the same duration, dimensions, and audio settings. Treat quality numbers as
+arbitrary starting values on encoder-specific scales. Preserve the efficient
+CPU output size when calibrating hardware encoders, and check card readability.
+Use quality-based encoding so static content can compress cheaply. The owner
+prefers this approach without bitrate ceilings. Document measured size
+differences and identify backends that have only had command-level validation.
+
 ## Project and architecture
 
 This is a Python CLI for generating ICPC contest reaction videos. Pillow renders
