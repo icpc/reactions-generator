@@ -10,8 +10,8 @@ from rich.console import Console
 
 from reactions_generator import worker
 from reactions_generator.overlayer import RunSummary
-from reactions_generator.progress import RenderProgress
-from reactions_generator.scheduler import SubmissionQueue
+from reactions_generator.progress import RenderProgress, render_rate
+from reactions_generator.scheduler import SubmissionProgress, SubmissionQueue
 
 
 def run_until_interrupt(
@@ -62,8 +62,8 @@ class WorkerTests(unittest.TestCase):
         progress = RenderProgress(Console(file=StringIO(), force_terminal=False))
         report_progress = progress.report
 
-        def report(remaining: int, *, succeeded: bool | None = None) -> None:
-            report_progress(remaining, succeeded=succeeded)
+        def report(snapshot: SubmissionProgress) -> None:
+            report_progress(snapshot)
             if progress.tasks[0].completed == 2:
                 finished.set()
 
@@ -100,23 +100,42 @@ class WorkerTests(unittest.TestCase):
             patch("reactions_generator.progress.monotonic", return_value=0) as clock,
             RenderProgress(console) as progress,
         ):
-            progress.report(2)
+            progress.report(SubmissionProgress(0, 0, 2))
             clock.return_value = 5
-            progress.report(1, succeeded=True)
+            progress.report(SubmissionProgress(1, 0, 1))
             clock.return_value = 31
-            progress.report(1)
+            progress.report(SubmissionProgress(1, 0, 1))
             clock.return_value = 32
-            progress.report(0, succeeded=False)
+            progress.report(SubmissionProgress(1, 1, 0))
 
         self.assertNotIn("\r", output.getvalue())
         self.assertEqual(
             output.getvalue().splitlines(),
             [
-                "Rendering submissions: 0/2 processed, 0 failed, 2 remaining, -- submissions/s",
-                "Rendering submissions: 1/2 processed, 0 failed, 1 remaining, 0.03 submissions/s",
-                "Rendering submissions: 2/2 processed, 1 failed, 0 remaining, 0.04 submissions/s",
+                "Rendering submissions: 0/2 processed, 0 failed, 2 remaining, --/s",
+                "Rendering submissions: 1/2 processed, 0 failed, 1 remaining, 0.0/s",
+                "Rendering submissions: 2/2 processed, 1 failed, 0 remaining, 0.0/s",
             ],
         )
+
+    def test_existing_results_start_progress_without_inflating_render_rate(
+        self,
+    ) -> None:
+        output = StringIO()
+        with (
+            patch("reactions_generator.progress.monotonic", return_value=0) as clock,
+            RenderProgress(Console(file=output, force_terminal=False)) as progress,
+        ):
+            progress.report(SubmissionProgress(80, 5, 15))
+            task = progress.tasks[0]
+            self.assertEqual(task.completed, 85)
+            self.assertEqual(task.total, 100)
+            self.assertEqual(task.fields["failed"], 5)
+            self.assertIsNone(render_rate(task))
+            clock.return_value = 2
+            progress.report(SubmissionProgress(81, 5, 14))
+            self.assertEqual(render_rate(task), 0.5)
+            self.assertEqual(task.completed, 86)
 
     def test_shutdown_does_not_record_interrupted_render_as_failure(self) -> None:
         stop = Event()
@@ -201,10 +220,13 @@ class WorkerTests(unittest.TestCase):
     def test_polling_partitions_runs_and_skips_existing_videos(self) -> None:
         runs = [RunSummary(str(value)) for value in range(40)]
         assigned: list[str] = []
+        succeeded = 0
+        failed = 0
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "5.mp4").write_bytes(b"existing render")
+            Path(directory, "7.err").write_text("existing failure")
             for worker_id in range(4):
-                queue = Mock(spec=SubmissionQueue)
+                queue = SubmissionQueue()
                 with patch.object(worker, "fetch_runs", return_value=runs):
                     worker.poll_submissions(
                         "https://example.com",
@@ -213,10 +235,18 @@ class WorkerTests(unittest.TestCase):
                         4,
                         worker_id,
                     )
-                snapshot: list[RunSummary] = queue.update.call_args.args[0]
-                assigned.extend(run.id for run in snapshot)
+                succeeded += queue.progress.succeeded
+                failed += queue.progress.failed
+                for _ in range(len(queue)):
+                    run = queue.take()
+                    self.assertIsNotNone(run)
+                    if run is not None:
+                        assigned.append(run.id)
 
-        self.assertCountEqual(assigned, [run.id for run in runs if run.id != "5"])
+        self.assertCountEqual(
+            assigned, [run.id for run in runs if run.id not in {"5", "7"}]
+        )
+        self.assertEqual((succeeded, failed), (1, 1))
 
     def test_polling_failure_retries_without_discarding_the_queue(self) -> None:
         queue = Mock(spec=SubmissionQueue)
@@ -232,7 +262,7 @@ class WorkerTests(unittest.TestCase):
                 worker.poll_submissions("https://example.com", queue, directory, 1, 0)
 
         self.assertEqual(fetch.call_count, 2)
-        queue.update.assert_called_once_with(runs)
+        queue.update.assert_called_once_with(runs, output_directory=Path(directory))
 
     def test_failed_submission_does_not_prevent_the_next_render(self) -> None:
         queue = SubmissionQueue()
@@ -376,8 +406,13 @@ class WorkerTests(unittest.TestCase):
                     raise TimeoutError("Polling did not provide the expected work")
                 return run
 
-            def update(self, runs: Sequence[RunSummary]) -> None:
-                super().update(runs)
+            def update(
+                self,
+                runs: Sequence[RunSummary],
+                *,
+                output_directory: Path | None = None,
+            ) -> None:
+                super().update(runs, output_directory=output_directory)
                 if any(run.id == "first" for run in runs):
                     refreshed.set()
 

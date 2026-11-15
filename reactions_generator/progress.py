@@ -14,10 +14,21 @@ from rich.progress import (
 )
 from rich.text import Text
 
+from reactions_generator.scheduler import SubmissionProgress
+
+
+def render_rate(task: Task) -> float | None:
+    """Exclude results discovered on disk from the session-average rate."""
+    if task.speed is not None:
+        return task.speed
+    rendered = task.completed - task.fields.get("initial_completed", 0)
+    elapsed = task.finished_time if task.finished else task.elapsed
+    return rendered / elapsed if rendered > 0 and elapsed else None
+
 
 class SpeedColumn(ProgressColumn):
     def render(self, task: Task) -> Text:
-        speed = task.finished_speed or task.speed
+        speed = render_rate(task)
         if not speed or speed <= 0:
             return Text("--/s", style="dim")
         return Text(f"{speed:.1f}/s", style="cyan")
@@ -75,35 +86,44 @@ class RenderProgress(Progress):
             get_time=monotonic,
         )
         self._task_id = self.add_task("Rendering submissions", total=0, failed=0)
-        self._processed = 0
-        self._failed = 0
+        self._initial_report = True
         self._next_report = 0.0
+        self._last_reported = -1
 
-    def report(self, remaining: int, *, succeeded: bool | None = None) -> None:
-        if succeeded is not None:
-            self._processed += 1
-            if not succeeded:
-                self._failed += 1
-
-        total = self._processed + remaining
-        self.update(
-            self._task_id,
-            completed=self._processed,
-            total=total,
-            failed=self._failed,
-            refresh=True,
-        )
+    def report(self, snapshot: SubmissionProgress) -> None:
+        processed = snapshot.succeeded + snapshot.failed
+        total = processed + snapshot.remaining
+        if self._initial_report:
+            self.reset(
+                self._task_id,
+                completed=processed,
+                total=total,
+                failed=snapshot.failed,
+                initial_completed=processed,
+            )
+            self._initial_report = False
+        else:
+            self.update(
+                self._task_id,
+                completed=processed,
+                total=total,
+                failed=snapshot.failed,
+                refresh=True,
+            )
 
         if self.disable:
             now = monotonic()
-            if now >= self._next_report or (succeeded is not None and remaining == 0):
+            if now >= self._next_report or (
+                snapshot.remaining == 0 and processed != self._last_reported
+            ):
                 task = self.tasks[0]
-                speed = task.finished_speed or task.speed
+                speed = render_rate(task)
                 rate = f"{speed:.1f}/s" if speed else "--/s"
                 self.console.print(
-                    f"Rendering submissions: {self._processed}/{total} processed, "
-                    f"{self._failed} failed, {remaining} remaining, {rate}",
+                    f"Rendering submissions: {processed}/{total} processed, "
+                    f"{snapshot.failed} failed, {snapshot.remaining} remaining, {rate}",
                     highlight=False,
                     soft_wrap=True,
                 )
                 self._next_report = now + 30
+                self._last_reported = processed

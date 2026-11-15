@@ -34,6 +34,13 @@ can take up to the 30-second timeout to stop. The files are removed when the
 render ends, including after failures or interruptions.
 Renderers share one Rich progress bar showing processed submissions, the current
 total, failed attempts, submissions per second, and estimated time remaining.
+Existing `.mp4` files count as successes and `.err` files count as failures
+for judged submissions in the current worker's partition. For example, 80 saved
+videos, 5 errors, and 15 waiting submissions start at 85/100 processed with
+5 failures. Repeated polls refresh these counts without counting results twice;
+in-flight results count when their render finishes. Removing an error file
+returns that submission to waiting work on the next poll. Previously saved
+results are excluded from the initial render-rate estimate.
 New eligible submissions increase the total;
 vanished waiting submissions decrease it. Each render prints a start message and,
 on success, a finish message on separate lines without disrupting the bar.

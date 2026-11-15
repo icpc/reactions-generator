@@ -74,9 +74,8 @@ def poll_submissions(
                     worker_id is None
                     or stable_hash(run.id) % total_workers == worker_id
                 )
-                and not (directory / f"{run.id}.mp4").exists()
-                and not (directory / f"{run.id}.err").exists()
-            ]
+            ],
+            output_directory=directory,
         )
     except Exception:
         logger.exception("Failed to refresh submissions from %s", url)
@@ -174,9 +173,12 @@ def continuous_build_submission(
                         succeeded = render_one(run)
                     finally:
                         with progress_lock:
-                            queue.complete(run.id)
+                            queue.complete(
+                                run.id,
+                                succeeded=succeeded if not stop.is_set() else None,
+                            )
                             if succeeded is not None and not stop.is_set():
-                                progress.report(queue.remaining, succeeded=succeeded)
+                                progress.report(queue.progress)
             finally:
                 stop.set()
 
@@ -187,7 +189,7 @@ def continuous_build_submission(
                         url, queue, output_directory, total_workers, worker_id
                     )
                     with progress_lock:
-                        progress.report(queue.remaining)
+                        progress.report(queue.progress)
                     stop.wait(poll_interval)
             finally:
                 stop.set()

@@ -1,11 +1,51 @@
+import tempfile
 import unittest
+from pathlib import Path
 from threading import Event, Thread
 
 from reactions_generator.overlayer import RunSummary
-from reactions_generator.scheduler import SubmissionQueue
+from reactions_generator.scheduler import SubmissionProgress, SubmissionQueue
 
 
 class SubmissionQueueTests(unittest.TestCase):
+    def test_existing_results_count_once_and_deleted_errors_allow_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            (directory / "good.mp4").write_bytes(b"video")
+            (directory / "good.err").write_text("stale error")
+            error = directory / "bad.err"
+            error.write_text("failed")
+            runs = [
+                RunSummary("good"),
+                RunSummary("bad"),
+                RunSummary("waiting"),
+                RunSummary("judging", verdict="IN_PROGRESS"),
+            ]
+            queue = SubmissionQueue()
+            for _ in range(2):
+                queue.update(runs, output_directory=directory)
+                self.assertEqual(queue.progress, SubmissionProgress(1, 1, 1))
+            error.unlink()
+            queue.update(runs, output_directory=directory)
+            self.assertEqual(queue.progress, SubmissionProgress(1, 0, 2))
+
+    def test_in_flight_output_is_counted_only_after_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            queue = SubmissionQueue()
+            runs = [RunSummary("active")]
+            queue.update(runs, output_directory=directory)
+            self.assertEqual(queue.take(), runs[0])
+            (directory / "active.mp4").write_bytes(b"video")
+            queue.update(runs, output_directory=directory)
+            self.assertEqual(queue.progress, SubmissionProgress(0, 0, 1))
+            queue.complete("active", succeeded=True)
+            self.assertEqual(queue.progress, SubmissionProgress(1, 0, 0))
+            queue.update(runs)
+            self.assertEqual(queue.progress, SubmissionProgress(1, 0, 0))
+            queue.update(runs, output_directory=directory)
+            self.assertEqual(queue.progress, SubmissionProgress(1, 0, 0))
+
     def test_priority_and_fifo_order(self) -> None:
         queue = SubmissionQueue()
         queue.update(
