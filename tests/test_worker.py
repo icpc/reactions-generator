@@ -6,11 +6,9 @@ from pathlib import Path
 from threading import Event, Thread
 from unittest.mock import Mock, patch
 
-from rich.console import Console
-
 from reactions_generator import worker
 from reactions_generator.overlayer import RunSummary
-from reactions_generator.progress import RenderProgress, render_rate
+from reactions_generator.progress import RenderProgress
 from reactions_generator.scheduler import SubmissionProgress, SubmissionQueue
 
 
@@ -59,12 +57,12 @@ class WorkerTests(unittest.TestCase):
         queue = SubmissionQueue()
         queue.update([RunSummary("good"), RunSummary("bad")])
         finished = Event()
-        progress = RenderProgress(Console(file=StringIO(), force_terminal=False))
+        progress = RenderProgress(StringIO())
         report_progress = progress.report
 
         def report(snapshot: SubmissionProgress) -> None:
             report_progress(snapshot)
-            if progress.tasks[0].completed == 2:
+            if progress.completed == 2:
                 finished.set()
 
         def build(*, id: str, **_kwargs: object) -> None:
@@ -88,17 +86,17 @@ class WorkerTests(unittest.TestCase):
             worker.continuous_build_submission(
                 "https://example.com", output_directory=directory
             )
-        self.assertEqual(progress.tasks[0].completed, 2)
-        self.assertEqual(progress.tasks[0].total, 2)
-        self.assertEqual(progress.tasks[0].fields["failed"], 1)
+        self.assertEqual(progress.completed, 2)
+        self.assertEqual(progress.total, 2)
+        self.assertEqual(progress.failed, 1)
 
     def test_plain_progress_reports_periodically_and_when_queue_drains(self) -> None:
         output = StringIO()
-        console = Console(file=output, force_terminal=True, no_color=True)
         with (
             patch.dict("os.environ", {"REACTIONS_PROGRESS": "plain"}),
             patch("reactions_generator.progress.monotonic", return_value=0) as clock,
-            RenderProgress(console) as progress,
+            patch("tqdm.std.time", side_effect=lambda: clock()),
+            RenderProgress(output) as progress,
         ):
             progress.report(SubmissionProgress(0, 0, 2))
             clock.return_value = 5
@@ -109,14 +107,12 @@ class WorkerTests(unittest.TestCase):
             progress.report(SubmissionProgress(1, 1, 0))
 
         self.assertNotIn("\r", output.getvalue())
-        self.assertEqual(
-            output.getvalue().splitlines(),
-            [
-                "Rendering submissions: 0/2 processed, 0 failed, 2 remaining, --/s",
-                "Rendering submissions: 1/2 processed, 0 failed, 1 remaining, 0.0/s",
-                "Rendering submissions: 2/2 processed, 1 failed, 0 remaining, 0.0/s",
-            ],
-        )
+        lines = output.getvalue().splitlines()
+        self.assertEqual(len(lines), 3)
+        for line, completed in zip(lines, (0, 1, 2), strict=True):
+            self.assertIn(f"{completed}/2", line)
+        self.assertIn("failed=1", lines[-1])
+        self.assertIn("s/it", lines[-1])
 
     def test_existing_results_start_progress_without_inflating_render_rate(
         self,
@@ -124,18 +120,19 @@ class WorkerTests(unittest.TestCase):
         output = StringIO()
         with (
             patch("reactions_generator.progress.monotonic", return_value=0) as clock,
-            RenderProgress(Console(file=output, force_terminal=False)) as progress,
+            patch("tqdm.std.time", side_effect=lambda: clock()),
+            RenderProgress(output) as progress,
         ):
             progress.report(SubmissionProgress(80, 5, 15))
-            task = progress.tasks[0]
-            self.assertEqual(task.completed, 85)
-            self.assertEqual(task.total, 100)
-            self.assertEqual(task.fields["failed"], 5)
-            self.assertIsNone(render_rate(task))
-            clock.return_value = 2
+            self.assertEqual(progress.completed, 85)
+            self.assertEqual(progress.total, 100)
+            self.assertEqual(progress.failed, 5)
+            self.assertIn("85/100", output.getvalue())
+            self.assertIn("?it/s", output.getvalue())
+            clock.return_value = 31
             progress.report(SubmissionProgress(81, 5, 14))
-            self.assertEqual(render_rate(task), 0.5)
-            self.assertEqual(task.completed, 86)
+            self.assertEqual(progress.completed, 86)
+            self.assertIn("31.00s/it", output.getvalue())
 
     def test_shutdown_does_not_record_interrupted_render_as_failure(self) -> None:
         stop = Event()

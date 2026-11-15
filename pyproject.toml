@@ -10,14 +10,15 @@ readme = "README.md"
 python = "^3.12"
 requests = "^2.34.2"
 pillow = "^13.0.0"
-rich = "^15.0.0"
 typer = "^0.28.0"
 numpy = "^2.5.4"
 typed-ffmpeg = "^4.6.2"
+tqdm = "^4.70.1"
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.17.4"
 pyright = "^1.1.414"
+types-tqdm = "^4.70.0.20261106"
 
 [tool.poetry.scripts]
 main = "reactions_generator.cli:main"

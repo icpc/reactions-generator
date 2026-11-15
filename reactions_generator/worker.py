@@ -16,7 +16,7 @@ import ffmpeg
 
 from reactions_generator.defaults import Defaults
 from reactions_generator.overlayer import RunSummary, build_submission, fetch_runs
-from reactions_generator.progress import RenderProgress
+from reactions_generator.progress import RenderProgress, write_progress_message
 from reactions_generator.rendering import kill_active_renders
 from reactions_generator.scheduler import SubmissionQueue
 
@@ -108,10 +108,9 @@ def continuous_build_submission(
         )
     if not math.isfinite(poll_interval) or poll_interval <= 0:
         raise ValueError("Poll interval must be a positive finite number")
-    print(
+    write_progress_message(
         f"Starting worker: hardware={hardware}, "
-        f"total_workers={total_workers}, worker_id={worker_id}",
-        flush=True,
+        f"total_workers={total_workers}, worker_id={worker_id}"
     )
     os.makedirs(output_directory, exist_ok=True)
 
@@ -120,7 +119,7 @@ def continuous_build_submission(
 
     def render_one(run: RunSummary) -> bool:
         try:
-            print(f"Starting render: {run.id}", flush=True)
+            write_progress_message(f"Starting render: {run.id}")
             build_submission(
                 id=run.id,
                 url=url,
@@ -139,7 +138,7 @@ def continuous_build_submission(
                 preset=preset,
                 vaapi_device=vaapi_device,
             )
-            print(f"Finished render: {run.id}", flush=True)
+            write_progress_message(f"Finished render: {run.id}")
             return True
         except ffmpeg.FFMpegExecuteError as e:
             if stop.is_set():

@@ -32,7 +32,7 @@ temporary directory before probing or encoding. If either download fails, the
 other stops between 64 KiB chunks and the render fails. A blocked network read
 can take up to the 30-second timeout to stop. The files are removed when the
 render ends, including after failures or interruptions.
-Renderers share one Rich progress bar showing processed submissions, the current
+Renderers share one tqdm progress bar showing processed submissions, the current
 total, failed attempts, submissions per second, and estimated time remaining.
 Existing `.mp4` files count as successes and `.err` files count as failures
 for judged submissions in the current worker's partition. For example, 80 saved
@@ -79,9 +79,11 @@ from the API and existing output files after restart.
 
 ## Dev setup
 
-Docker Compose defaults to plain progress output. The worker prints a summary
-on the first poll, every 30 seconds, and when the queue drains. Follow
-those summaries and the per-render messages with `docker compose logs -f reactions`.
+Docker Compose defaults to newline progress output. The worker prints a tqdm
+snapshot on the first poll, every 30 seconds, and when the queue drains or the
+total/failure count changes. Snapshots include `failed=N` and tqdm's
+`it/s` or `s/it` rate. Follow
+those snapshots and the per-render messages with `docker compose logs -f reactions`.
 The Compose command must run `all ...` to show submission progress.
 
 To view the live bar in the service's terminal, select automatic progress mode
@@ -92,9 +94,9 @@ REACTIONS_PROGRESS=auto docker compose up -d --force-recreate
 docker compose attach reactions
 ```
 
-Use Ctrl+P, Ctrl+Q to detach. Ctrl+C requests shutdown. Outside Compose, Rich
+Use Ctrl+P, Ctrl+Q to detach. Ctrl+C requests shutdown. Outside Compose, tqdm
 uses the live bar when stderr is a terminal. Set `REACTIONS_PROGRESS=plain` to
-force periodic summaries. Compose runs the published image, so this behavior
+force periodic newline snapshots. Compose runs the published image, so this behavior
 requires an updated image.
 
 Poetry manages dependencies, Ruff checks formatting, and Pyright checks types.
