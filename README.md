@@ -34,6 +34,8 @@ short-run verdict or priority flags change. Existing videos, error files, and
 unjudged runs skip these detail requests. A failed details request records an
 `.err` file and releases the next task, using the same retry rules as render
 failures. The standalone `single` command fetches its details when invoked.
+Invalid submission details identify the overlayer endpoint, submission ID, and
+the missing or invalid field in the log and `.err` file.
 Each render downloads its remote webcam and screen media concurrently into a
 temporary directory before probing or encoding. If either download fails, the
 other stops between 64 KiB chunks and the render fails. A blocked network read

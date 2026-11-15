@@ -38,6 +38,66 @@ def submission_payload(
 
 
 class SubmissionTests(unittest.TestCase):
+    def test_detail_errors_identify_overlayer_submission_and_field(self) -> None:
+        cases = [
+            (
+                {
+                    **submission_payload(),
+                    "team": {
+                        "organization": {"logo": {"url": "#ffffff"}},
+                        "rankBefore": 1,
+                    },
+                },
+                TypeError,
+                "team.rankAfter",
+                "missing or null",
+            ),
+            (submission_payload(time="invalid"), ValueError, "time", "received str"),
+            (
+                submission_payload(videos=[{"url": None}]),
+                TypeError,
+                "reactionVideos[0].url",
+                "missing or null",
+            ),
+            (
+                submission_payload(videos=[]),
+                ValueError,
+                "reactionVideos",
+                "Webcam reaction video is missing",
+            ),
+        ]
+        for payload, error_type, field, reason in cases:
+            with self.subTest(field=field):
+                response = Mock()
+                response.json.return_value = payload
+                with (
+                    patch.object(overlayer.requests, "get", return_value=response),
+                    self.assertRaises(error_type) as error,
+                ):
+                    overlayer.fetch_submission("https://overlayer.example/", "run-12")
+                message = str(error.exception)
+                self.assertIn("overlayer", message)
+                self.assertIn("run-12", message)
+                self.assertIn(
+                    "https://overlayer.example/reactions/fullRuns/run-12", message
+                )
+                self.assertIn(field, message)
+                self.assertIn(reason, message)
+
+    def test_invalid_submission_json_identifies_the_response_source(self) -> None:
+        response = Mock()
+        response.json.side_effect = ValueError("invalid JSON")
+        with (
+            patch.object(overlayer.requests, "get", return_value=response),
+            self.assertRaises(ValueError) as error,
+        ):
+            overlayer.fetch_submission("https://overlayer.example", "run-12")
+        self.assertIn("not valid JSON", str(error.exception))
+        self.assertIn("run-12", str(error.exception))
+        self.assertIn(
+            "https://overlayer.example/reactions/fullRuns/run-12", str(error.exception)
+        )
+
     def test_prefetched_submission_renders_without_an_api_request(self) -> None:
         with (
             tempfile.TemporaryDirectory() as directory,

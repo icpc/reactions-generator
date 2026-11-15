@@ -51,21 +51,33 @@ class Submission:
     screen_source: str
 
 
+def _field_error(value: object, name: str, expected: str) -> str:
+    if value is None:
+        return (
+            f"Required field {name!r} is missing or null in the overlayer information. "
+            f"Expected {expected}."
+        )
+    return (
+        f"Invalid field {name!r} in the overlayer information. "
+        f"Expected {expected}, received {type(value).__name__}."
+    )
+
+
 def _object(value: object, name: str) -> Mapping[str, object]:
     if not isinstance(value, dict):
-        raise TypeError(f"{name} must be an object")
+        raise TypeError(_field_error(value, name, "an object"))
     return cast(dict[str, object], value)
 
 
 def _array(value: object, name: str) -> list[object]:
     if not isinstance(value, list):
-        raise TypeError(f"{name} must be an array")
+        raise TypeError(_field_error(value, name, "an array"))
     return cast(list[object], value)
 
 
 def _text(value: object, name: str) -> str:
     if not isinstance(value, str):
-        raise TypeError(f"{name} must be a string")
+        raise TypeError(_field_error(value, name, "a string"))
     return value
 
 
@@ -75,19 +87,19 @@ def _number(value: object, name: str) -> float:
         or not isinstance(value, (int, float))
         or not math.isfinite(value)
     ):
-        raise ValueError(f"{name} must be a finite number")
+        raise ValueError(_field_error(value, name, "a finite number"))
     return value
 
 
 def _integer(value: object, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
-        raise TypeError(f"{name} must be an integer")
+        raise TypeError(_field_error(value, name, "an integer"))
     return value
 
 
 def _boolean(value: object, name: str) -> bool:
     if not isinstance(value, bool):
-        raise TypeError(f"{name} must be a boolean")
+        raise TypeError(_field_error(value, name, "a boolean"))
     return value
 
 
@@ -106,8 +118,8 @@ def parse_submission(payload: object) -> Submission:
 
     if "verdict" in result:
         verdict = _object(result["verdict"], "result.verdict")
-        outcome = _text(verdict.get("shortName"), "verdict.shortName")
-        success = _boolean(verdict.get("isAccepted"), "verdict.isAccepted")
+        outcome = _text(verdict.get("shortName"), "result.verdict.shortName")
+        success = _boolean(verdict.get("isAccepted"), "result.verdict.isAccepted")
     else:
         outcome = f"+{_number(result.get('difference'), 'result.difference')}"
         success = _boolean(
@@ -116,20 +128,27 @@ def parse_submission(payload: object) -> Submission:
 
     webcam_source = ""
     screen_source = ""
-    for source in _array(data.get("reactionVideos"), "reactionVideos"):
-        video = _object(source, "reaction video")
-        url = _text(video.get("url"), "reaction video.url")
+    for index, source in enumerate(
+        _array(data.get("reactionVideos"), "reactionVideos")
+    ):
+        video = _object(source, f"reactionVideos[{index}]")
+        url = _text(video.get("url"), f"reactionVideos[{index}].url")
         uri = urlsplit(url).path.rsplit(".", 1)[0]
         if uri.endswith("webcam"):
             webcam_source = url
         elif uri.endswith("desktop"):
             screen_source = url
     if not webcam_source:
-        raise ValueError("Submission has no webcam reaction video")
+        raise ValueError(
+            "Webcam reaction video is missing from overlayer 'reactionVideos' information"
+        )
 
     return Submission(
         title=_text(team.get("displayName", ""), "team.displayName"),
-        subtitle=_text(custom_fields.get("clicsTeamFullName", ""), "team full name"),
+        subtitle=_text(
+            custom_fields.get("clicsTeamFullName", ""),
+            "team.customFields.clicsTeamFullName",
+        ),
         hashtag=hashtag,
         task=_text(problem.get("letter"), "problem.letter"),
         time=_number(data.get("time"), "time"),
@@ -144,16 +163,28 @@ def parse_submission(payload: object) -> Submission:
 
 
 def fetch_submission(url: str, id: str) -> Submission:
-    response = requests.get(f"{url.rstrip('/')}/reactions/fullRuns/{id}", timeout=30)
+    endpoint = f"{url.rstrip('/')}/reactions/fullRuns/{id}"
+    response = requests.get(endpoint, timeout=30)
     response.raise_for_status()
-    return parse_submission(response.json())
+    try:
+        payload: object = response.json()
+    except ValueError as exc:
+        raise ValueError(
+            f"Overlayer details for submission {id!r} from {endpoint} are not valid JSON"
+        ) from exc
+    try:
+        return parse_submission(payload)
+    except (TypeError, ValueError) as exc:
+        raise type(exc)(
+            f"Invalid overlayer details for submission {id!r} from {endpoint}. {exc}"
+        ) from exc
 
 
 def parse_run_summary(payload: object) -> RunSummary:
     run = _object(payload, "run")
     id = run.get("id")
     if isinstance(id, bool) or not isinstance(id, (str, int)):
-        raise TypeError("run.id must be a string or integer")
+        raise TypeError(_field_error(id, "run.id", "a string or integer"))
     return RunSummary(
         id=str(id),
         verdict=_text(run.get("verdict", ""), "run.verdict"),
