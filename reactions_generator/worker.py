@@ -5,7 +5,7 @@ import logging
 import math
 import os
 import signal
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,10 +15,14 @@ from types import FrameType
 import ffmpeg
 
 from reactions_generator.defaults import Defaults
-from reactions_generator.overlayer import RunSummary, build_submission, fetch_runs
+from reactions_generator.overlayer import (
+    fetch_runs,
+    fetch_submission,
+    render_submission,
+)
 from reactions_generator.progress import RenderProgress, write_progress_message
 from reactions_generator.rendering import kill_active_renders
-from reactions_generator.scheduler import SubmissionQueue
+from reactions_generator.scheduler import RenderTask, SubmissionQueue
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +65,10 @@ def poll_submissions(
     output_directory: str,
     total_workers: int,
     worker_id: int | None,
+    stop: Event | None = None,
+    on_update: Callable[[], None] | None = None,
 ) -> None:
-    """Refresh one pending snapshot; retain the previous queue on API failure."""
+    """Refresh summaries, then fetch details for waiting submissions."""
     directory = Path(output_directory)
     try:
         runs = fetch_runs(url)
@@ -79,6 +85,24 @@ def poll_submissions(
         )
     except Exception:
         logger.exception("Failed to refresh submissions from %s", url)
+        return
+
+    if on_update is not None:
+        on_update()
+    for run in queue.to_prepare:
+        if stop is not None and stop.is_set():
+            return
+        try:
+            submission = fetch_submission(url, run.id)
+        except Exception as exc:  # noqa: BLE001 - Isolate failed submission details.
+            if stop is not None and stop.is_set():
+                return
+            log_error(str(exc), run.id, output_directory)
+            queue.complete(run.id, succeeded=False)
+            if on_update is not None:
+                on_update()
+        else:
+            queue.prepare(run, submission)
 
 
 def continuous_build_submission(
@@ -117,12 +141,12 @@ def continuous_build_submission(
     queue = SubmissionQueue()
     stop = Event()
 
-    def render_one(run: RunSummary) -> bool:
+    def render_one(run: RenderTask) -> bool:
         try:
             write_progress_message(f"Starting render: {run.id}")
-            build_submission(
+            render_submission(
+                submission=run.submission,
                 id=run.id,
-                url=url,
                 success_audio_path=success_audio_path,
                 fail_audio_path=fail_audio_path,
                 output_directory=output_directory,
@@ -164,6 +188,11 @@ def continuous_build_submission(
     ):
         progress_lock = Lock()
 
+        def report_progress() -> None:
+            with progress_lock:
+                if not stop.is_set():
+                    progress.report(queue.progress)
+
         def render_loop() -> None:
             try:
                 while not stop.is_set() and (run := queue.take()) is not None:
@@ -185,10 +214,15 @@ def continuous_build_submission(
             try:
                 while not stop.is_set():
                     poll_submissions(
-                        url, queue, output_directory, total_workers, worker_id
+                        url,
+                        queue,
+                        output_directory,
+                        total_workers,
+                        worker_id,
+                        stop=stop,
+                        on_update=report_progress,
                     )
-                    with progress_lock:
-                        progress.report(queue.progress)
+                    report_progress()
                     stop.wait(poll_interval)
             finally:
                 stop.set()

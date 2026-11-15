@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from reactions_generator import overlayer
+from tests.fixtures import SUBMISSION
 
 
 def submission_payload(
@@ -37,6 +38,21 @@ def submission_payload(
 
 
 class SubmissionTests(unittest.TestCase):
+    def test_prefetched_submission_renders_without_an_api_request(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(overlayer, "fetch_submission") as fetch,
+            patch.object(overlayer, "render_reaction") as render,
+        ):
+            overlayer.render_submission(
+                SUBMISSION, id="ready", output_directory=directory, print_progress=False
+            )
+        fetch.assert_not_called()
+        self.assertEqual(render.call_args.kwargs["title"], SUBMISSION.title)
+        self.assertEqual(
+            render.call_args.kwargs["webcam_source"], SUBMISSION.webcam_source
+        )
+
     def test_run_summary_uses_exporter_priority_flags(self) -> None:
         first = overlayer.parse_run_summary(
             {"id": 1, "isFirstToSolve": True, "isAccepted": True, "verdict": "AC"}

@@ -42,7 +42,7 @@ Read the files relevant to the task:
 - `reactions_generator/worker.py`: polling, deterministic partitioning, and
   per-submission error reporting.
 - `reactions_generator/scheduler.py`: thread-safe priority scheduling and
-  in-flight submission tracking.
+  in-flight submission tracking, including prefetched submission details.
 - `reactions_generator/card.py`: immutable `Card` model and frame rendering.
 - `reactions_generator/text_layout.py`, `utils.py`, and `interpolate.py`: text
   fitting, image geometry, and animation helpers.
@@ -101,6 +101,10 @@ together. Do not hand-edit lockfile package versions or hashes.
   `isFirstToSolve` and `isAccepted` from the live-v3 short-run API. Missing
   `isFirstToSolve` means false. Keep first-discovery FIFO order within a priority,
   refresh waiting priorities on polls, and never preempt an active encode.
+- The polling thread fetches full details before a task can be taken by a
+  renderer. Reuse waiting details while their short-run record is unchanged,
+  invalidate them when it changes, and release them when dispatched or removed.
+  Fetch failures follow the same persistent `.err` rules as render failures.
 - Keep `IN_PROGRESS` runs out of the render queue until judged. Poll snapshots
   remove vanished waiting runs and deduplicate in-flight work. Poll failures
   retry after `--poll-interval`; failed renders record `.err` files and must be

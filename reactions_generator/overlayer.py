@@ -199,8 +199,50 @@ def build_submission(
         if print_progress:
             print(f"File {output_path} already exists. Use --overwrite to replace.")
         return
-    submission = fetch_submission(url, id)
+    render_submission(
+        fetch_submission(url, id),
+        id=id,
+        success_audio_path=success_audio_path,
+        fail_audio_path=fail_audio_path,
+        output_directory=output_directory,
+        vcodec=vcodec,
+        acodec=acodec,
+        hardware=hardware,
+        quality=quality,
+        preset=preset,
+        vaapi_device=vaapi_device,
+        vertical=vertical,
+        print_progress=print_progress,
+        overwrite=overwrite,
+        sound=sound,
+        hwaccel=hwaccel,
+    )
 
+
+def render_submission(
+    submission: Submission,
+    id: str,
+    success_audio_path: str = Defaults.success_audio_path,
+    fail_audio_path: str = Defaults.fail_audio_path,
+    output_directory: str = Defaults.output_directory,
+    vcodec: str | None = Defaults.vcodec,
+    acodec: str = Defaults.acodec,
+    hardware: str = Defaults.hardware,
+    quality: str = Defaults.quality,
+    preset: str | None = Defaults.preset,
+    vaapi_device: str | None = Defaults.vaapi_device,
+    vertical: bool = True,
+    print_progress: bool = True,
+    overwrite: bool = False,
+    sound: bool = Defaults.sound,
+    hwaccel: str | None = Defaults.hwaccel,
+) -> None:
+    """Render prefetched submission details without another API request."""
+    output_path = os.path.join(output_directory, f"{id}.mp4")
+    if os.path.exists(output_path) and not overwrite:
+        if print_progress:
+            print(f"File {output_path} already exists. Use --overwrite to replace.")
+        return
     background_source = Defaults.background_source_h
     background_position = Defaults.background_position_h
     card_position = Defaults.card_position_h

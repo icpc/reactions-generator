@@ -27,6 +27,13 @@ poetry run main all https://overlayer.example --poll-interval 2
 video at a time by default. Set `--total-workers` to control local concurrency.
 A fixed pool of renderer threads takes videos from the priority queue. Each
 renderer finishes its video before taking the highest-priority waiting submission.
+The polling thread fetches full submission details in priority order before
+dispatching each task. Prepared tasks can render while details for other tasks
+are fetched. Waiting details are reused across polls and refreshed when the
+short-run verdict or priority flags change. Existing videos, error files, and
+unjudged runs skip these detail requests. A failed details request records an
+`.err` file and releases the next task, using the same retry rules as render
+failures. The standalone `single` command fetches its details when invoked.
 Each render downloads its remote webcam and screen media concurrently into a
 temporary directory before probing or encoding. If either download fails, the
 other stops between 64 KiB chunks and the render fails. A blocked network read

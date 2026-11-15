@@ -9,7 +9,12 @@ from unittest.mock import Mock, patch
 from reactions_generator import worker
 from reactions_generator.overlayer import RunSummary
 from reactions_generator.progress import RenderProgress
-from reactions_generator.scheduler import SubmissionProgress, SubmissionQueue
+from reactions_generator.scheduler import (
+    RenderTask,
+    SubmissionProgress,
+    SubmissionQueue,
+)
+from tests.fixtures import SUBMISSION, queue_runs, take_run
 
 
 def run_until_interrupt(
@@ -27,6 +32,83 @@ def run_until_interrupt(
 
 
 class WorkerTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._fetch_submission: Mock = self.enterContext(
+            patch.object(worker, "fetch_submission", return_value=SUBMISSION)
+        )
+
+    def test_details_are_prefetched_once_in_priority_order(self) -> None:
+        first = RunSummary("first", is_first_to_solve=True)
+        rest = RunSummary("rest")
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(
+                worker,
+                "fetch_runs",
+                return_value=[
+                    rest,
+                    RunSummary("saved"),
+                    RunSummary("judging", verdict="IN_PROGRESS"),
+                    first,
+                ],
+            ),
+        ):
+            Path(directory, "saved.mp4").write_bytes(b"video")
+            queue = SubmissionQueue()
+            worker.poll_submissions("https://example.com", queue, directory, 1, None)
+            self.assertEqual(
+                [call.args[1] for call in self._fetch_submission.call_args_list],
+                ["first", "rest"],
+            )
+            task = queue.take()
+            self.assertIsNotNone(task)
+            if task is not None:
+                self.assertEqual(task.id, "first")
+                self.assertIs(task.submission, SUBMISSION)
+            worker.poll_submissions("https://example.com", queue, directory, 1, None)
+            self.assertEqual(self._fetch_submission.call_count, 2)
+
+    def test_failed_prefetch_records_error_and_is_skipped_on_later_polls(self) -> None:
+        self._fetch_submission.side_effect = [
+            OSError("details unavailable"),
+            SUBMISSION,
+        ]
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(
+                worker,
+                "fetch_runs",
+                return_value=[RunSummary("bad"), RunSummary("good")],
+            ),
+            self.assertLogs(worker.logger, level="ERROR"),
+        ):
+            queue = SubmissionQueue()
+            worker.poll_submissions("https://example.com", queue, directory, 1, None)
+            self.assertTrue(Path(directory, "bad.err").exists())
+            self.assertEqual(queue.progress, SubmissionProgress(0, 1, 1))
+            self.assertEqual(take_run(queue), RunSummary("good"))
+            worker.poll_submissions("https://example.com", queue, directory, 1, None)
+            self.assertEqual(self._fetch_submission.call_count, 2)
+
+    def test_shutdown_during_prefetch_does_not_write_error_file(self) -> None:
+        stop = Event()
+
+        def fetch(_url: str, _id: str) -> None:
+            stop.set()
+            raise OSError("interrupted")
+
+        self._fetch_submission.side_effect = fetch
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(
+                worker, "fetch_runs", return_value=[RunSummary("interrupted")]
+            ),
+        ):
+            worker.poll_submissions(
+                "https://example.com", SubmissionQueue(), directory, 1, None, stop=stop
+            )
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
     def test_failed_submission_is_skipped_until_error_file_is_removed(self) -> None:
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -34,7 +116,7 @@ class WorkerTests(unittest.TestCase):
         ):
             queue = SubmissionQueue()
             worker.poll_submissions("https://example.com", queue, directory, 1, None)
-            self.assertEqual(queue.take(), RunSummary("failed"))
+            self.assertEqual(take_run(queue), RunSummary("failed"))
             error = Path(directory, "failed.err")
             error.write_text("encoding failed")
             queue.complete("failed")
@@ -51,11 +133,11 @@ class WorkerTests(unittest.TestCase):
             worker.poll_submissions(
                 "https://example.com", restarted, directory, 1, None
             )
-            self.assertEqual(restarted.take(), RunSummary("failed"))
+            self.assertEqual(take_run(restarted), RunSummary("failed"))
 
     def test_progress_reaches_total_including_failed_renders(self) -> None:
         queue = SubmissionQueue()
-        queue.update([RunSummary("good"), RunSummary("bad")])
+        queue_runs(queue, [RunSummary("good"), RunSummary("bad")])
         finished = Event()
         progress = RenderProgress(StringIO())
         report_progress = progress.report
@@ -69,7 +151,7 @@ class WorkerTests(unittest.TestCase):
             if id == "bad":
                 raise ValueError("invalid submission")
 
-        def poll(*_args: object) -> None:
+        def poll(*_args: object, **_kwargs: object) -> None:
             self.assertTrue(finished.wait(3))
             raise KeyboardInterrupt
 
@@ -77,7 +159,7 @@ class WorkerTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as directory,
             patch.object(worker, "SubmissionQueue", return_value=queue),
             patch.object(worker, "poll_submissions", side_effect=poll),
-            patch.object(worker, "build_submission", side_effect=build),
+            patch.object(worker, "render_submission", side_effect=build) as render,
             patch.object(worker, "RenderProgress", return_value=progress),
             patch.object(progress, "report", side_effect=report),
             self.assertLogs(worker.logger, level="ERROR"),
@@ -89,6 +171,9 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(progress.completed, 2)
         self.assertEqual(progress.total, 2)
         self.assertEqual(progress.failed, 1)
+        for call in render.call_args_list:
+            self.assertIs(call.kwargs["submission"], SUBMISSION)
+        self._fetch_submission.assert_not_called()
 
     def test_plain_progress_reports_periodically_and_when_queue_drains(self) -> None:
         output = StringIO()
@@ -138,7 +223,7 @@ class WorkerTests(unittest.TestCase):
         stop = Event()
         started = Event()
         queue = SubmissionQueue()
-        queue.update([RunSummary("interrupted"), RunSummary("waiting")])
+        queue_runs(queue, [RunSummary("interrupted"), RunSummary("waiting")])
 
         def build(**_kwargs: object) -> None:
             started.set()
@@ -146,7 +231,7 @@ class WorkerTests(unittest.TestCase):
                 raise TimeoutError("shutdown was not signalled")
             raise OSError("encoder interrupted")
 
-        def poll(*_args: object) -> None:
+        def poll(*_args: object, **_kwargs: object) -> None:
             self.assertTrue(started.wait(3))
             stop.set()
             raise KeyboardInterrupt
@@ -156,7 +241,7 @@ class WorkerTests(unittest.TestCase):
             patch.object(worker, "Event", return_value=stop),
             patch.object(worker, "SubmissionQueue", return_value=queue),
             patch.object(worker, "poll_submissions", side_effect=poll),
-            patch.object(worker, "build_submission", side_effect=build) as render,
+            patch.object(worker, "render_submission", side_effect=build) as render,
             patch.object(worker, "RenderProgress"),
             patch.object(worker, "log_error") as log_error,
             self.assertRaises(KeyboardInterrupt),
@@ -235,7 +320,7 @@ class WorkerTests(unittest.TestCase):
                 succeeded += queue.progress.succeeded
                 failed += queue.progress.failed
                 for _ in range(len(queue)):
-                    run = queue.take()
+                    run = take_run(queue)
                     self.assertIsNotNone(run)
                     if run is not None:
                         assigned.append(run.id)
@@ -247,6 +332,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_polling_failure_retries_without_discarding_the_queue(self) -> None:
         queue = Mock(spec=SubmissionQueue)
+        queue.to_prepare = []
         runs = [RunSummary("eventually-available")]
         with (
             tempfile.TemporaryDirectory() as directory,
@@ -263,7 +349,7 @@ class WorkerTests(unittest.TestCase):
 
     def test_failed_submission_does_not_prevent_the_next_render(self) -> None:
         queue = SubmissionQueue()
-        queue.update([RunSummary("bad"), RunSummary("next")])
+        queue_runs(queue, [RunSummary("bad"), RunSummary("next")])
         with tempfile.TemporaryDirectory() as directory:
             with (
                 patch.object(worker, "SubmissionQueue", return_value=queue),
@@ -271,7 +357,7 @@ class WorkerTests(unittest.TestCase):
                 patch.object(worker, "RenderProgress"),
                 patch.object(
                     worker,
-                    "build_submission",
+                    "render_submission",
                     side_effect=[ValueError("invalid submission"), KeyboardInterrupt],
                 ) as build,
                 self.assertLogs(worker.logger, level="ERROR"),
@@ -305,7 +391,7 @@ class WorkerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:  # noqa: SIM117
             with (
                 patch.object(worker, "fetch_runs", return_value=runs),
-                patch.object(worker, "build_submission", side_effect=build),
+                patch.object(worker, "render_submission", side_effect=build),
                 patch.object(worker, "RenderProgress"),
             ):
                 runner = Thread(
@@ -333,7 +419,7 @@ class WorkerTests(unittest.TestCase):
         release_fast = Event()
         priority_started = Event()
         queue = SubmissionQueue()
-        queue.update([RunSummary("slow"), RunSummary("fast"), RunSummary("rest")])
+        queue_runs(queue, [RunSummary("slow"), RunSummary("fast"), RunSummary("rest")])
         rendered: list[str] = []
 
         def build(*, id: str, **_kwargs: object) -> None:
@@ -354,7 +440,7 @@ class WorkerTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as directory,
             patch.object(worker, "SubmissionQueue", return_value=queue),
             patch.object(worker, "poll_submissions"),
-            patch.object(worker, "build_submission", side_effect=build),
+            patch.object(worker, "render_submission", side_effect=build),
             patch.object(worker, "RenderProgress") as progress,
         ):
             runner = Thread(
@@ -366,11 +452,12 @@ class WorkerTests(unittest.TestCase):
             try:
                 self.assertTrue(slow_started.wait(3))
                 self.assertTrue(fast_started.wait(3))
-                queue.update(
+                queue_runs(
+                    queue,
                     [
                         RunSummary("rest"),
                         RunSummary("priority", is_first_to_solve=True),
-                    ]
+                    ],
                 )
                 release_fast.set()
                 self.assertTrue(priority_started.wait(3))
@@ -397,7 +484,7 @@ class WorkerTests(unittest.TestCase):
         fetch_count = 0
 
         class ObservedQueue(SubmissionQueue):
-            def take(self) -> RunSummary | None:
+            def take(self) -> RenderTask | None:
                 run = super().take()
                 if run is None:
                     raise TimeoutError("Polling did not provide the expected work")
@@ -442,7 +529,7 @@ class WorkerTests(unittest.TestCase):
                 with (
                     patch.object(worker, "SubmissionQueue", ObservedQueue),
                     patch.object(worker, "fetch_runs", side_effect=fetch),
-                    patch.object(worker, "build_submission", side_effect=build),
+                    patch.object(worker, "render_submission", side_effect=build),
                     patch.object(worker, "RenderProgress"),
                     self.assertRaises(KeyboardInterrupt),
                 ):
