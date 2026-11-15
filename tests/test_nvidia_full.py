@@ -139,8 +139,8 @@ class NvidiaDispatchTests(unittest.TestCase):
                 self.subTest(source=source),
                 patch.object(
                     rendering,
-                    "stage_media",
-                    side_effect=[Defaults.webcam_source, staged_screen],
+                    "stage_reaction_media",
+                    return_value=(Defaults.webcam_source, staged_screen),
                 ),
                 patch.object(rendering, "get_metadata", return_value=metadata) as probe,
                 patch.object(

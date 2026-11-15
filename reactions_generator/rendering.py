@@ -23,7 +23,11 @@ from reactions_generator.card import Card
 from reactions_generator.composition import compose_video, video_input
 from reactions_generator.defaults import Defaults
 from reactions_generator.encoding import EncoderConfig, make_encoder, prepare_video
-from reactions_generator.media import get_metadata, load_image_or_color, stage_media
+from reactions_generator.media import (
+    get_metadata,
+    load_image_or_color,
+    stage_reaction_media,
+)
 
 logger = logging.getLogger(__name__)
 _active_processes: set[subprocess.Popen[bytes]] = set()
@@ -255,7 +259,9 @@ def render_reaction(
     """Render reaction as a video file."""
     with tempfile.TemporaryDirectory(prefix="reaction-inputs-") as directory:
         inputs = Path(directory)
-        webcam_source = stage_media(webcam_source, inputs, "webcam")
+        webcam_source, screen_source = stage_reaction_media(
+            webcam_source, screen_source, inputs
+        )
 
         screen_is_video = (
             not urlsplit(screen_source)
@@ -263,7 +269,6 @@ def render_reaction(
             .endswith((".png", ".jpg", ".jpeg", ".webp", ".bmp"))
         )
         try:
-            screen_source = stage_media(screen_source, inputs, "screen")
             if screen_is_video:
                 get_metadata(screen_source)
         except Exception as exc:

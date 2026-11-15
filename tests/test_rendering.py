@@ -32,12 +32,12 @@ class RenderingTests(unittest.TestCase):
             screen = "https://example.com/desktop.webm?token=456"
             sources = [webcam, screen]
             metadata = Mock(fps=30, duration=1.0, audio=True)
-            response = MagicMock()
-            response.__enter__.return_value = response
             download_fails = error is media.requests.exceptions.ConnectionError
 
             def download(source: str, **_kwargs: object) -> MagicMock:
                 self.assertIn(source, sources)
+                response = MagicMock()
+                response.__enter__.return_value = response
                 response.iter_content.return_value = iter([source.encode()])
                 if download_fails and source == webcam:
 
@@ -92,7 +92,9 @@ class RenderingTests(unittest.TestCase):
                 get_metadata.assert_not_called()
                 render.assert_not_called()
             else:
-                self.assertEqual([call.args[0] for call in get.call_args_list], sources)
+                self.assertCountEqual(
+                    [call.args[0] for call in get.call_args_list], sources
+                )
                 self.assertTrue(
                     all(call.kwargs["stream"] for call in get.call_args_list)
                 )

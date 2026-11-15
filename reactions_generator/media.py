@@ -2,9 +2,11 @@
 
 import logging
 import re
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from fractions import Fraction
 from io import BytesIO
 from pathlib import Path
+from threading import Event
 from typing import NamedTuple, TypedDict, cast
 from urllib.parse import unquote, urlsplit
 
@@ -79,8 +81,15 @@ def direct_ffprobe(video_source: str) -> Metadata:
     )
 
 
-def stage_media(source: str, directory: Path, name: str) -> str:
+def stage_media(
+    source: str,
+    directory: Path,
+    name: str,
+    cancelled: Event | None = None,
+) -> str:
     """Download an HTTP media source into the render's temporary directory."""
+    if cancelled is not None and cancelled.is_set():
+        raise CancelledError("Another media download failed")
     url = urlsplit(source)
     if url.scheme not in {"http", "https"}:
         return source
@@ -92,9 +101,29 @@ def stage_media(source: str, directory: Path, name: str) -> str:
     with requests.get(source, stream=True, timeout=30) as response:
         response.raise_for_status()
         with destination.open("wb") as output:
-            for chunk in response.iter_content(chunk_size=1024 * 1024):
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                if cancelled is not None and cancelled.is_set():
+                    raise CancelledError("Another media download failed")
                 output.write(chunk)
     return str(destination)
+
+
+def stage_reaction_media(
+    webcam_source: str, screen_source: str, directory: Path
+) -> tuple[str, str]:
+    """Download both reaction inputs together and cancel peers on failure."""
+    cancelled = Event()
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="media-download") as pool:
+        webcam = pool.submit(stage_media, webcam_source, directory, "webcam", cancelled)
+        screen = pool.submit(stage_media, screen_source, directory, "screen", cancelled)
+        try:
+            for future in as_completed((webcam, screen)):
+                future.result()
+            return webcam.result(), screen.result()
+        finally:
+            cancelled.set()
+            webcam.cancel()
+            screen.cancel()
 
 
 def metadata_via_ffmpeg(video_source: str) -> Metadata:
